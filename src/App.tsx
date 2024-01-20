@@ -2,10 +2,11 @@ export default function App() {
   return (
     <>
       <div className="bg-zinc-900 h-screen flex">
-        <div className="container mx-auto flex flex-col justify-center items-center space-y-4 pt-40">
+        <div className="container mx-auto flex flex-col justify-center items-center space-y-4 lg:pt-40">
+          <img src="/Logo.png" />
           <p className="text-5xl text-white">TMU Planner</p>
           <p className="text-xl text-white">Coming Soon!</p>
-          <p className="text-md text-white pt-60">
+          <p className="text-md text-white lg:pt-60 pt-20">
             A project by{' '}
             <a
               className="text-blue-500 underline-offset-2 underline hover:text-blue-300"
@@ -16,7 +17,7 @@ export default function App() {
             </a>
           </p>
           <div className="container flex justify-center items-center space-x-2 pt-2">
-            <p className="text-white">Check it out on </p>
+            <p className="text-white">Check it out </p>
             <a href="https://github.com/brandonnly/tmu-planner" target="_blank">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
