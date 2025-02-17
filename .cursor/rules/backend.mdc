@@ -1,0 +1,141 @@
+---
+description: 
+globs: 
+---
+# Backend Development Rules
+
+## Technology Stack
+- Python 3.13
+- UV for dependency and environment management
+- BeautifulSoup4 for HTML scraping
+- Typer for CLI interface
+- Rich for terminal output formatting
+- Supabase Python SDK for database operations
+
+## Project Structure
+```
+backend/
+├── requirements.txt    # UV lockfile
+├── README.md          # Backend documentation
+├── src/
+│   ├── cli/           # CLI commands and options
+│   │   ├── __init__.py
+│   │   └── app.py     # Typer CLI application
+│   ├── scraper/       # Web scraping logic
+│   │   ├── __init__.py
+│   │   ├── calendar.py    # Academic calendar scraper
+│   │   ├── course.py      # Course data scraper
+│   │   ├── program.py     # Program requirements scraper
+│   │   └── utils.py       # Scraping utilities
+│   ├── models/        # Data models and types
+│   │   ├── __init__.py
+│   │   ├── course.py      # Course data models
+│   │   ├── program.py     # Program data models
+│   │   └── types.py       # Common types
+│   ├── db/            # Database operations
+│   │   ├── __init__.py
+│   │   ├── client.py      # Supabase client
+│   │   └── operations.py  # Database operations
+│   └── utils/         # General utilities
+│       ├── __init__.py
+│       ├── logger.py      # Logging configuration
+│       └── config.py      # Configuration management
+├── tests/             # Test directory
+└── .env              # Environment variables
+```
+## Development Guidelines
+
+### Scraping Guidelines
+- Implement rate limiting and delays between requests
+- Handle network errors gracefully
+- Cache responses when appropriate
+- Follow robots.txt guidelines
+- Log all scraping activities
+- Validate scraped data against schemas
+- Handle different academic year formats
+
+### Data Processing
+- Clean and normalize data before storage
+- Implement data validation
+- Handle edge cases and inconsistencies
+- Track data versioning
+- Maintain data integrity across academic years
+
+### CLI Design
+- Provide clear, helpful command descriptions
+- Implement progress bars for long operations
+- Add verbose logging options
+- Support different output formats
+- Allow selective scraping of specific years/programs
+- Implement dry-run options
+
+### Database Operations
+- Use transactions where appropriate
+- Implement upsert operations
+- Handle conflicts gracefully
+- Maintain data consistency
+- Track data modifications
+- Implement rollback capabilities
+
+### Error Handling
+- Implement comprehensive error handling
+- Log errors with appropriate context
+- Provide user-friendly error messages
+- Allow for graceful degradation
+- Support resume capabilities for failed operations
+
+### Testing
+- Unit tests for scraping logic
+- Integration tests for database operations
+- Mock network requests in tests
+- Test different academic year formats
+- Validate data integrity in tests
+
+## CLI Commands
+
+### Main Commands
+```bash
+# Scrape all data for a specific year
+tmu-scraper scrape-year 2023
+
+# Scrape specific program
+tmu-scraper scrape-program "Computer Science"
+
+# Update course data
+tmu-scraper update-courses
+
+# Validate scraped data
+tmu-scraper validate
+
+# Export data to JSON
+tmu-scraper export --format json --output data/
+```
+
+### Options
+- `--year`: Academic year to scrape
+- `--program`: Specific program to scrape
+- `--verbose`: Enable verbose logging
+- `--dry-run`: Run without saving data
+- `--force`: Force update existing data
+- `--output`: Output directory for exports
+- `--format`: Export format (json/csv)
+
+## Environment Variables
+```
+SUPABASE_URL=your-project-url
+SUPABASE_KEY=your-service-role-key
+SCRAPER_DELAY=2.0
+LOG_LEVEL=INFO
+```
+
+## Best Practices
+
+1. Documentation
+   - Document all functions and classes
+   - Document known limitations
+
+2. Performance
+   - Implement caching where appropriate
+   - Use async operations for I/O
+   - Optimize database operations
+   - Monitor memory usage
