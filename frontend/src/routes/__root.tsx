@@ -1,6 +1,6 @@
-
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/router-devtools'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -9,11 +9,13 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <div className="h-screen flex flex-col">
-      <div className="flex gap-2 text-lg border-b p-2">
-        <div className="font-bold text-lg mr-4 flex items-center gap-2">
-          <img src="/Logo.png" alt="TMU Planner Logo" className="h-6 w-6" />
+      <div className="flex gap-4 text-xl border-b p-4 items-center">
+        <div className="font-bold text-xl mr-4 flex items-center gap-3">
+          <img src="/Logo.png" alt="TMU Planner Logo" className="h-8 w-8" />
           TMU Planner
         </div>
+        <div className="flex-1" />
+        <ThemeToggle />
       </div>
       <div className="flex-1 min-h-0">
         <Outlet />
