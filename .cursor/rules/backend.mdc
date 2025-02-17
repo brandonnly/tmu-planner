@@ -1,6 +1,6 @@
 ---
-description: Backend Overview
-globs: 
+description: Backend Scraper Overview
+globs: scraper/*
 ---
 # Backend Development Rules
 

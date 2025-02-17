@@ -1,6 +1,6 @@
 ---
 description: Frontend Overview
-globs: 
+globs: frontend/*
 ---
 # Frontend Development Rules
 
