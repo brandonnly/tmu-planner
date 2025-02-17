@@ -26,21 +26,25 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
   return (
     <Card 
       ref={setNodeRef}
-      className={`p-4 w-[300px] h-full transition-colors ${
+      className={`p-4 w-[320px] h-full transition-colors ${
         isOver ? "bg-muted/50" : ""
       }`}
     >
       <div className="h-full flex flex-col">
-        <h3 className="font-semibold mb-4">{`${term} ${year}`}</h3>
-        <div className="flex-1 min-h-0 space-y-4 overflow-y-auto">
-          {courses.map((course) => (
-            <CourseCard
-              key={course.id}
-              id={course.id}
-              courseCode={course.courseCode}
-              courseName={course.courseName}
-            />
-          ))}
+        <h3 className="font-semibold mb-4 text-center">{`${term} ${year}`}</h3>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
+            <div className="space-y-4 px-4 mr-4">
+              {courses.map((course) => (
+                <CourseCard
+                  key={course.id}
+                  id={course.id}
+                  courseCode={course.courseCode}
+                  courseName={course.courseName}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </Card>
