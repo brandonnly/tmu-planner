@@ -2,7 +2,9 @@
     "name": "tmuplanner",
     "private": true,
     "workspaces": [
-        "frontend",
-        "backend"
-    ]
+        "frontend"
+    ],
+    "devDependencies": {
+        "supabase": "^2.12.1"
+    }
 }
