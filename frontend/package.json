@@ -24,6 +24,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@marsidev/react-turnstile": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.2",
+    "@supabase/supabase-js": "^2.48.1",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-router": "^1.105.0",
     "@tanstack/router-devtools": "^1.105.0",
