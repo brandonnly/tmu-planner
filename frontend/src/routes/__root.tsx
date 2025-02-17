@@ -19,13 +19,42 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { LogOut } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
+import { getCachedImage, revokeObjectURL } from '@/lib/utils'
 
 function UserMenu({ user }: { user: User }) {
+  const [avatarUrl, setAvatarUrl] = useState<string>(user.user_metadata.picture)
+
+  useEffect(() => {
+    let isMounted = true
+
+    getCachedImage(user.user_metadata.picture, `avatar-${user.id}`)
+      .then((url) => {
+        if (isMounted) {
+          // Clean up previous object URL if it exists
+          if (avatarUrl?.startsWith('blob:')) {
+            revokeObjectURL(avatarUrl)
+          }
+          setAvatarUrl(url)
+        }
+      })
+      .catch(console.error)
+
+    return () => {
+      isMounted = false
+      // Clean up object URL when component unmounts
+      if (avatarUrl?.startsWith('blob:')) {
+        revokeObjectURL(avatarUrl)
+      }
+    }
+  }, [user.user_metadata.picture, user.id])
+
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut()
     if (error) {
       console.error('Error signing out:', error.message)
       toast.error('Failed to sign out')
+    } else {
+      toast.success('Signed out successfully')
     }
   }
 
@@ -34,7 +63,7 @@ function UserMenu({ user }: { user: User }) {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="gap-2 py-6">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.user_metadata.avatar_url} alt={user.user_metadata.full_name} />
+            <AvatarImage src={avatarUrl} alt={user.user_metadata.full_name} />
             <AvatarFallback>{user.user_metadata.full_name?.[0]?.toUpperCase()}</AvatarFallback>
           </Avatar>
           <span className="text-sm font-normal">{user.user_metadata.full_name}</span>
@@ -66,20 +95,14 @@ function LoginDialog() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      const newUser = session?.user ?? null
-      setUser(newUser)
-      if (newUser) {
-        toast.success(`Welcome, ${newUser.user_metadata.full_name}!`)
-      } else {
-        toast.success('Signed out successfully')
-      }
+      setUser(session?.user ?? null)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
   const handleGoogleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error, data } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         queryParams: {
@@ -92,6 +115,10 @@ function LoginDialog() {
     if (error) {
       console.error('Error signing in with Google:', error.message)
       toast.error('Failed to sign in with Google')
+    } else if (data.url) {
+      // Only show welcome toast when redirecting to Google
+      // The actual success will be handled when we return
+      toast.success('Redirecting to Google...')
     }
   }
 
