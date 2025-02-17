@@ -1,0 +1,83 @@
+---
+description: Project Overview
+globs: 
+---
+# TMU Planner Project Rules
+
+## Project Overview
+TMU Planner is a visual degree planning tool for Toronto Metropolitan University students. It allows users to plan their courses semester by semester, track degree requirements, and manage their academic progress.
+
+## Project Structure
+The project is split into two main directories:
+
+### Frontend (`/frontend`)
+- React-based web application
+- Built with Vite, Shadcn, dndkit, and TanStack Router
+- Uses LegendState for state management and local storage sync
+- Supabase integration for cloud storage
+- Responsive design with mobile considerations
+- Environment variables for configuration
+
+### Backend (`/backend`)
+- Python-based CLI tool
+- Web scraper for TMU academic calendar
+- Data processing and Supabase database population
+- Supports historical data from 2016-2017 onwards
+
+## Core Features
+1. Course Planning
+   - Semester-by-semester visual planning
+   - Drag-and-drop interface (desktop/tablet)
+   - List view for mobile devices
+   - Multiple plan saving and management
+
+2. Requirements Tracking
+   - Degree requirements checklist
+   - Minor and specialization tracking
+   - Automatic prerequisite verification
+   - Liberal studies requirements
+
+3. Data Management
+   - Local browser storage (IndexedDB)
+   - Optional cloud sync with Supabase
+   - CSV/JSON import/export functionality
+   - No login required for basic usage
+
+## Development Guidelines
+1. Data Security
+   - Use environment variables for sensitive data
+   - Public Supabase anon key management
+   - Secure user data handling
+
+2. Data Sources
+   - Primary: https://www.torontomu.ca/calendar/2023-2024/programs/
+   - Historical: Support back to 2016-2017
+   - User-reported corrections system
+
+3. Mobile Considerations
+   - Responsive design
+   - Simplified list view for mobile
+   - Clear messaging for edit limitations
+
+4. Database Design
+   - Efficient course data structure
+   - Program requirement mappings
+   - User data synchronization
+   - Version control for curriculum changes
+
+## Deployment
+- Frontend hosting (TBD)
+- Domain options:
+  - tmuplanner.app (preferred)
+  - tmupath.info
+  - tmupath.app
+  - planner.tmu.brndn.ly
+
+## Disclaimers
+- Not officially affiliated with Toronto Metropolitan University
+- Curriculum data may not be fully up to date
+- Historical curriculum checking limitations
+
+## Inspiration
+- UWPath (https://uwpath.com/)
+- Similar tools in the academic planning space

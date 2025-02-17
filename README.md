@@ -22,6 +22,8 @@ An easy to use visual planner for your degree at TMU.
 - Shadcn
 - dndkit
 - Supabase
+- LegendState
+- TanStack Router
 
 ## Acknowledgements
 

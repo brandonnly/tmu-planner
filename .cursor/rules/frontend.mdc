@@ -1,0 +1,100 @@
+---
+description: Frontend Overview
+globs: 
+---
+# Frontend Development Rules
+
+## Technology Stack
+- React with TypeScript
+- Vite for build tooling
+- Shadcn for UI components
+- dndkit for drag and drop functionality
+- TanStack Router for routing
+- LegendState for state management
+- Supabase for backend integration
+
+## Project Structure
+```
+frontend/
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── features/       # Feature-specific components and logic
+│   ├── hooks/         # Custom React hooks
+│   ├── lib/           # Utility functions and configurations
+│   ├── public/        # Static assets
+│   ├── state/         # LegendState stores
+│   ├── styles/        # Global styles and themes
+│   ├── routes/        # File Routing Componenets
+│   └── types/         # TypeScript type definitions
+```
+
+## Development Guidelines
+
+### State Management
+- Use LegendState for complex state management
+- Leverage IndexedDB for local storage
+- Implement cloud sync with Supabase
+- Keep state updates atomic and predictable
+
+### UI/UX Principles
+- Follow Figma design specifications
+- Implement responsive design patterns
+- Desktop-first development with mobile adaptations
+- Clear loading and error states
+- Accessible color schemes and contrast ratios
+
+### Mobile Considerations
+- List view for course planning on small screens
+- Touch-friendly interface elements
+- Clear messaging about desktop features
+- Optimized performance for mobile devices
+
+### Performance
+- Implement code splitting
+- Optimize bundle size
+- Use lazy loading for routes
+- Efficient re-rendering strategies
+
+### Testing
+- Unit tests for utility functions
+- Component testing with React Testing Library
+- E2E testing for critical user flows
+- Accessibility testing
+
+### Code Style
+- Follow TypeScript best practices
+- Use Biome for formatting and linting
+- Maintain consistent component structure
+- Document complex logic and components
+
+### Security
+- Store sensitive data in environment variables
+- Implement proper CORS policies
+- Secure user data handling
+- Input validation and sanitization
+
+## Feature Implementation
+
+### Course Planning
+- Drag and drop interface for desktop
+- List-based interface for mobile
+- Real-time prerequisite checking
+- Visual semester organization
+
+### Data Management
+- Automatic saving to IndexedDB
+- Optional Supabase sync
+- Import/Export functionality
+- Data validation
+
+### User Experience
+- Clear error messages
+- Loading states
+- Undo/Redo functionality
+- Responsive feedback
+
+## Build and Deployment
+- Environment-specific configurations
+- Production build optimization
+- Error tracking and monitoring
+- Performance metrics tracking
