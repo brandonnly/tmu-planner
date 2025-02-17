@@ -1,5 +1,4 @@
-import { DndContext, DragEndEvent, DragStartEvent, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
+import { DndContext, DragEndEvent, DragStartEvent, useDroppable, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { CourseCard } from "@/components/course-card";
 import { useState } from "react";
@@ -126,6 +125,14 @@ export function AcademicPlanner() {
   // State to track the currently dragged course
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag starts
+      },
+    })
+  );
+
   const handleDragStart = (event: DragStartEvent) => {
     const course = exampleCourses.find(c => c.id === event.active.id);
     if (course) {
@@ -173,7 +180,7 @@ export function AcademicPlanner() {
   };
 
   return (
-    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="h-full overflow-hidden">
         <div className="h-full overflow-x-auto">
           <div className="flex gap-16 p-6 min-w-min h-full">

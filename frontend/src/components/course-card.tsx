@@ -9,7 +9,7 @@ interface CourseCardProps {
 }
 
 export function CourseCard({ courseCode, courseName, id }: CourseCardProps) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: id,
   });
 
@@ -19,13 +19,23 @@ export function CourseCard({ courseCode, courseName, id }: CourseCardProps) {
       }
     : undefined;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Only handle click if it's not part of a drag
+    if (!isDragging) {
+      console.log("Card clicked:", courseCode);
+    }
+  };
+
   return (
     <Card
       ref={setNodeRef}
       style={style}
       {...listeners}
       {...attributes}
-      className="relative w-64 p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+      onClick={handleClick}
+      className={`relative w-64 p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+        isDragging ? 'opacity-50' : ''
+      }`}
     >
       <div className="absolute top-2 right-2">
         <InfoIcon className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
