@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
 import { CourseCard } from "@/components/course-card";
 import { useState } from "react";
+import { Leaf, Snowflake, Sun } from "lucide-react";
 
 // Example course data - you can replace this with your actual data structure
 interface Course {
@@ -23,6 +24,19 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
     id: id,
   });
 
+  const getIcon = () => {
+    switch (term) {
+      case "Fall":
+        return <Leaf className="w-4 h-4" />;
+      case "Winter":
+        return <Snowflake className="w-4 h-4" />;
+      case "Spring/Summer":
+        return <Sun className="w-4 h-4" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <Card 
       ref={setNodeRef}
@@ -31,7 +45,10 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
       }`}
     >
       <div className="h-full flex flex-col">
-        <h3 className="font-semibold mb-4 text-center">{`${term} ${year}`}</h3>
+        <h3 className="font-semibold mb-4 text-center flex items-center justify-center gap-2">
+          {getIcon()}
+          {`${term} ${year}`}
+        </h3>
         <div className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
             <div className="space-y-4 px-4 mr-4">
