@@ -432,7 +432,9 @@ function RootComponent() {
 												<ThemeToggle />
 											</div>
 											<div className="flex-1 min-h-0">
-												<Outlet />
+												<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
+													<Outlet />
+												</div>
 											</div>
 										</div>
 									</div>
