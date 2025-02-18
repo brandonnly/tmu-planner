@@ -1,7 +1,6 @@
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
 	DndContext,
-	DragEndEvent,
-	DragStartEvent,
 	useDroppable,
 	DragOverlay,
 	PointerSensor,
@@ -15,6 +14,7 @@ import { Leaf, Snowflake, Sun } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 import { useSidebar } from "@/routes/__root";
+import { Input } from "@/components/ui/input";
 
 type Term = "Fall" | "Winter" | "Spring/Summer";
 
@@ -81,7 +81,7 @@ function groupSemestersByAcademicYear(
 ): Record<number, Semester[]> {
 	const academicYears: Record<number, Semester[]> = {};
 
-	semesters.forEach((semester) => {
+	for (const semester of semesters) {
 		// Academic year is determined by the Fall semester
 		// Fall 2021, Winter 2022, Spring/Summer 2022 all belong to academic year 2021-2022
 		const academicYear =
@@ -92,10 +92,10 @@ function groupSemestersByAcademicYear(
 		}
 
 		academicYears[academicYear].push(semester);
-	});
+	}
 
 	// Sort semesters within each academic year
-	Object.values(academicYears).forEach((yearSemesters) => {
+	for (const yearSemesters of Object.values(academicYears)) {
 		yearSemesters.sort((a, b) => {
 			const termOrder = { Fall: 0, Winter: 1, "Spring/Summer": 2 };
 			if (a.year === b.year) {
@@ -103,7 +103,7 @@ function groupSemestersByAcademicYear(
 			}
 			return a.year - b.year;
 		});
-	});
+	}
 
 	return academicYears;
 }
@@ -123,11 +123,11 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
 	const getIcon = () => {
 		switch (term) {
 			case "Fall":
-				return <Leaf className="w-4 h-4" />;
+				return <Leaf className="w-4 h-4 text-orange-500" />;
 			case "Winter":
-				return <Snowflake className="w-4 h-4" />;
+				return <Snowflake className="w-4 h-4 text-blue-400" />;
 			case "Spring/Summer":
-				return <Sun className="w-4 h-4" />;
+				return <Sun className="w-4 h-4 text-yellow-500" />;
 			default:
 				return null;
 		}
@@ -193,127 +193,90 @@ function AcademicYear({
 	);
 }
 
-export function AcademicPlanner() {
-	// Example courses - replace with your actual course data
-	const exampleCourses: Course[] = [
-		{ id: "1", courseCode: "CPS109", courseName: "Computer Science I" },
-		{ id: "2", courseCode: "CPS209", courseName: "Computer Science II" },
-		{ id: "3", courseCode: "CPS305", courseName: "Data Structures" },
-		{ id: "4", courseCode: "CPS393", courseName: "Introduction to C and UNIX" },
-		{ id: "5", courseCode: "CPS400", courseName: "Computer Science III" },
-		{ id: "6", courseCode: "CPS401", courseName: "Computer Science IV" },
-		{ id: "7", courseCode: "CPS402", courseName: "Computer Science V" },
-		{ id: "8", courseCode: "CPS403", courseName: "Computer Science VI" },
-		{ id: "9", courseCode: "CPS404", courseName: "Computer Science VII" },
-		{ id: "10", courseCode: "CPS405", courseName: "Computer Science VIII" },
-	];
+function CourseSidebar({ courses }: { courses: Course[] }) {
+	const [search, setSearch] = useState("");
+	const { setNodeRef, isOver } = useDroppable({
+		id: "sidebar",
+	});
 
+	const filteredCourses = courses.filter(
+		(course) =>
+			course.courseCode.toLowerCase().includes(search.toLowerCase()) ||
+			course.courseName.toLowerCase().includes(search.toLowerCase()),
+	);
+
+	return (
+		<div ref={setNodeRef} className="h-full flex flex-col">
+			<div className="p-4">
+				<Input
+					placeholder="Search courses..."
+					value={search}
+					onChange={(e) => setSearch(e.target.value)}
+					className="w-full"
+				/>
+			</div>
+			<div
+				className={`flex-1 overflow-y-auto p-4 transition-colors ${isOver ? "bg-muted/50" : ""}`}
+			>
+				<div className="space-y-2">
+					{filteredCourses.map((course) => (
+						<CourseCard
+							key={course.id}
+							id={course.id}
+							courseCode={course.courseCode}
+							courseName={course.courseName}
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+interface AcademicPlannerProps {
+	semesterCourses: Record<string, Course[]>;
+	courses: Course[];
+	onDragStart: (event: DragStartEvent) => void;
+	onDragEnd: (event: DragEndEvent) => void;
+}
+
+export function AcademicPlanner({
+	semesterCourses,
+	courses,
+	onDragStart,
+	onDragEnd,
+}: AcademicPlannerProps) {
 	// Generate semesters starting from Fall 2021
 	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
 	const academicYears = groupSemestersByAcademicYear(semesters);
 
-	// State to track which courses are in which semester
-	const [semesterCourses, setSemesterCourses] = useState<
-		Record<string, Course[]>
-	>({
-		"fall-2021": exampleCourses, // Initially place courses in Fall 2021
-	});
-
-	// State to track the currently dragged course
-	const [activeCourse, setActiveCourse] = useState<Course | null>(null);
-
-	const sensors = useSensors(
-		useSensor(PointerSensor, {
-			activationConstraint: {
-				distance: 8,
-			},
-		}),
+	// Get all courses that are in semesters
+	const coursesInSemesters = new Set(
+		Object.values(semesterCourses)
+			.flat()
+			.map((course) => course.id),
 	);
 
-	const handleDragStart = (event: DragStartEvent) => {
-		const course = exampleCourses.find((c) => c.id === event.active.id);
-		if (course) {
-			setActiveCourse(course);
-		}
-	};
-
-	const handleDragEnd = (event: DragEndEvent) => {
-		const { active, over } = event;
-
-		if (over && active.id !== over.id) {
-			setSemesterCourses((prev) => {
-				const course = exampleCourses.find((c) => c.id === active.id);
-				if (!course) return prev;
-
-				// Find which semester currently has the course
-				let sourceSemester = "";
-				Object.entries(prev).forEach(([semester, courses]) => {
-					if (courses.some((c) => c.id === active.id)) {
-						sourceSemester = semester;
-					}
-				});
-
-				// Create new state with all existing courses
-				const newSemesterCourses = { ...prev };
-
-				// Remove course from source semester if found
-				if (sourceSemester) {
-					newSemesterCourses[sourceSemester] = prev[sourceSemester].filter(
-						(c) => c.id !== active.id,
-					);
-				}
-
-				// Add course to target semester
-				const targetSemester = over.id as string;
-				newSemesterCourses[targetSemester] = [
-					...(newSemesterCourses[targetSemester] || []),
-					course,
-				];
-
-				return newSemesterCourses;
-			});
-		}
-		setActiveCourse(null);
-	};
-
-	const { isOpen } = useSidebar();
+	// Filter out courses that are already in semesters for the sidebar
+	const availableCourses = courses.filter(
+		(course) => !coursesInSemesters.has(course.id),
+	);
 
 	return (
-		<DndContext
-			sensors={sensors}
-			onDragStart={handleDragStart}
-			onDragEnd={handleDragEnd}
-		>
-			<div className="h-full flex">
-				<div className="flex-1 overflow-hidden">
-					<div className="h-full overflow-x-auto">
-						<div className="flex gap-16 p-6 min-w-min h-full">
-							{Object.entries(academicYears).map(
-								([startYear, yearSemesters]) => (
-									<div key={startYear} className="h-full">
-										<AcademicYear
-											startYear={Number.parseInt(startYear)}
-											semesters={yearSemesters}
-											semesterCourses={semesterCourses}
-										/>
-									</div>
-								),
-							)}
+		<div className="h-full">
+			<div className="h-full overflow-x-auto">
+				<div className="flex gap-16 p-6 min-w-min h-full">
+					{Object.entries(academicYears).map(([startYear, yearSemesters]) => (
+						<div key={startYear} className="h-full">
+							<AcademicYear
+								startYear={Number.parseInt(startYear)}
+								semesters={yearSemesters}
+								semesterCourses={semesterCourses}
+							/>
 						</div>
-					</div>
+					))}
 				</div>
 			</div>
-			<DragOverlay>
-				{activeCourse ? (
-					<div className="transform-none">
-						<CourseCard
-							id={activeCourse.id}
-							courseCode={activeCourse.courseCode}
-							courseName={activeCourse.courseName}
-						/>
-					</div>
-				) : null}
-			</DragOverlay>
-		</DndContext>
+		</div>
 	);
 }
