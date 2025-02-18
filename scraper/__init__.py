@@ -1,0 +1,3 @@
+"""
+TMU Course Scraper package.
+""" 

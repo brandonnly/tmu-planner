@@ -1,12 +1,7 @@
 from typing import List, Optional
-from ..models import Course
-from .client import get_supabase_client
-import logging
-from supabase.lib.client_options import ClientOptions
+from models import Course
+from db.client import get_supabase_client
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def upload_courses(courses: List[Course], env: Optional[str] = None) -> tuple[int, int]:
     """
@@ -22,28 +17,19 @@ def upload_courses(courses: List[Course], env: Optional[str] = None) -> tuple[in
     Raises:
         Exception: If there's an error during upload
     """
-    try:
-        supabase = get_supabase_client(env)
+    supabase = get_supabase_client(env)
+    
+    # Convert courses to dictionaries for upload
+    course_dicts = [course.to_dict() for course in courses]
+    
+    # Use upsert with url as the conflict detection column
+    # This ensures we update existing courses rather than creating duplicates
+    result = supabase.table('course') \
+        .upsert(course_dicts, on_conflict='url') \
+        .execute()
         
-        # Convert courses to dictionaries for upload
-        course_dicts = [course.to_dict() for course in courses]
-        
-        # Use upsert with url as the conflict detection column
-        # This ensures we update existing courses rather than creating duplicates
-        result = supabase.table('course') \
-            .upsert(course_dicts, on_conflict='url') \
-            .execute()
-            
-        # Log success
-        processed = len(courses)
-        uploaded = len(result.data) if result.data else 0
-        logger.info(f"Processed {processed} courses, successfully uploaded {uploaded}")
-        
-        return processed, uploaded
-        
-    except Exception as e:
-        logger.error(f"Error uploading courses: {str(e)}")
-        raise
+    # Return processed and uploaded counts
+    return len(courses), len(result.data) if result.data else 0
 
 def upload_course(course: Course, env: Optional[str] = None) -> bool:
     """
@@ -59,9 +45,5 @@ def upload_course(course: Course, env: Optional[str] = None) -> bool:
     Raises:
         Exception: If there's an error during upload
     """
-    try:
-        processed, uploaded = upload_courses([course], env)
-        return uploaded == 1
-    except Exception as e:
-        logger.error(f"Error uploading course {course.code}: {str(e)}")
-        raise 
+    processed, uploaded = upload_courses([course], env)
+    return uploaded == 1 

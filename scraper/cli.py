@@ -1,6 +1,5 @@
 import typer
 import httpx
-from bs4 import BeautifulSoup
 from models import Course
 from typing import List, Optional, Set
 import asyncio
@@ -278,6 +277,7 @@ def upload(
             
         # Convert JSON data to Course objects
         courses = []
+        error_count = 0
         for course_data in courses_data:
             try:
                 course = Course(
@@ -297,16 +297,27 @@ def upload(
                 )
                 courses.append(course)
             except Exception as e:
-                typer.secho(f"Error loading course: {str(e)}", fg=typer.colors.RED)
+                error_count += 1
+                typer.secho(f"Error loading course: {str(e)}", fg=typer.colors.YELLOW, err=True)
                 continue
+        
+        if error_count > 0:
+            typer.secho(f"Warning: {error_count} courses failed to load", fg=typer.colors.YELLOW, err=True)
                 
         # Upload to Supabase
         typer.echo(f"Uploading {len(courses)} courses to {env} database...")
-        processed, uploaded = upload_courses(courses, env=env)
-        typer.echo(f"Upload complete: {uploaded}/{processed} courses uploaded successfully")
+        try:
+            processed, uploaded = upload_courses(courses, env=env)
+            typer.secho(
+                f"Upload complete: {uploaded}/{processed} courses uploaded successfully",
+                fg=typer.colors.GREEN
+            )
+        except Exception as e:
+            typer.secho(f"Upload failed: {str(e)}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
         
     except Exception as e:
-        typer.secho(f"Error: {str(e)}", fg=typer.colors.RED)
+        typer.secho(f"Error: {str(e)}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1)
 
 @app.command()
@@ -431,8 +442,18 @@ def calendar(
         # Upload to Supabase if requested
         if upload_env:
             typer.echo(f"\nUploading {len(all_courses)} courses to {upload_env} database...")
-            processed, uploaded = upload_courses(all_courses, env=upload_env)
-            typer.echo(f"Upload complete: {uploaded}/{processed} courses uploaded successfully")
+            try:
+                processed, uploaded = upload_courses(all_courses, env=upload_env)
+                typer.secho(
+                    f"Upload complete: {uploaded}/{processed} courses uploaded successfully",
+                    fg=typer.colors.GREEN
+                )
+            except Exception as e:
+                typer.secho(f"Upload failed: {str(e)}", fg=typer.colors.RED, err=True)
+                if output:
+                    typer.echo("Continuing with JSON export...")
+                else:
+                    raise typer.Exit(1)
         
         # Save to JSON if output path specified
         if output:
