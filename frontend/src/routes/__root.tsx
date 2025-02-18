@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { DndContext } from "@dnd-kit/core";
 import type { Course } from "@/types/course";
 import { CourseCard } from "@/components/course-card";
+import { ThemeProvider } from "@/components/theme-provider";
 
 // Initialize PostHog at the top level
 if (import.meta.env.VITE_POSTHOG_KEY) {
@@ -256,58 +257,61 @@ function RootComponent() {
 	];
 
 	return (
-		<PostHogProvider client={posthog}>
-			<CourseContext.Provider value={{ courses: exampleCourses }}>
-				<DndContext>
-					<div className="h-screen">
-						<div
-							className={`
-								fixed top-0 left-0 h-screen w-[320px] border-r bg-background
-								transition-transform duration-300
-								${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-							`}
-						>
-							<CourseSidebar courses={exampleCourses} />
-						</div>
-						<div
-							className={`
-								h-screen flex flex-col
-								transition-all duration-300
-								${sidebarOpen ? "pl-[320px]" : "pl-0"}
-							`}
-						>
-							<div className="flex gap-4 text-xl border-b p-4 items-center">
-								<div className="font-bold text-xl flex items-center gap-3">
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => setSidebarOpen(!sidebarOpen)}
-										className="h-8 w-8 p-0"
-										type="button"
-									>
-										<Menu className="h-5 w-5" />
-									</Button>
-									<img
-										src="/Logo.png"
-										alt="TMU Planner Logo"
-										className="h-8 w-8"
-									/>
-									TMU Planner
+		<ThemeProvider defaultTheme="system" storageKey="theme">
+			<PostHogProvider client={posthog}>
+				<CourseContext.Provider value={{ courses: exampleCourses }}>
+					<DndContext>
+						<div className="h-screen">
+							<div
+								className={`
+									fixed top-0 left-0 h-screen w-[320px] border-r bg-background
+									transition-transform duration-300
+									${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+								`}
+							>
+								<CourseSidebar courses={exampleCourses} />
+							</div>
+							<div
+								className={`
+									h-screen flex flex-col
+									transition-all duration-300
+									${sidebarOpen ? "pl-[320px]" : "pl-0"}
+								`}
+							>
+								<div className="flex gap-4 text-xl border-b p-4 items-center">
+									<div className="font-bold text-xl flex items-center gap-3">
+										<Button
+											variant="ghost"
+											size="icon"
+											onClick={() => setSidebarOpen(!sidebarOpen)}
+											className="h-8 w-8 p-0"
+											type="button"
+										>
+											<Menu className="h-5 w-5" />
+										</Button>
+										<img
+											src="/Logo.png"
+											alt="TMU Planner Logo"
+											className="h-8 w-8"
+										/>
+										TMU Planner
+									</div>
+									<div className="flex-1" />
+									<LoginDialog />
+									<ThemeToggle />
 								</div>
-								<div className="flex-1" />
-								<LoginDialog />
-								<ThemeToggle />
-							</div>
-							<div className="flex-1 min-h-0">
-								<SidebarContext.Provider value={{ isOpen: sidebarOpen }}>
-									<Outlet />
-								</SidebarContext.Provider>
+								<div className="flex-1 min-h-0">
+									<SidebarContext.Provider value={{ isOpen: sidebarOpen }}>
+										<Outlet />
+									</SidebarContext.Provider>
+								</div>
 							</div>
 						</div>
-					</div>
-				</DndContext>
-			</CourseContext.Provider>
-		</PostHogProvider>
+					</DndContext>
+				</CourseContext.Provider>
+				<Toaster />
+			</PostHogProvider>
+		</ThemeProvider>
 	);
 }
 
