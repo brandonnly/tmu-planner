@@ -118,7 +118,6 @@ async def fetch_courses(urls: List[str], client: httpx.AsyncClient, progress: Pr
         retries = 0
         while retries < max_retries:
             try:
-                debug_print(f"Fetching course from {url} (attempt {retries + 1}/{max_retries})", debug)
                 response = await client.get(url)
                 
                 # Handle rate limiting (429) specifically
@@ -130,22 +129,16 @@ async def fetch_courses(urls: List[str], client: httpx.AsyncClient, progress: Pr
                     continue
                 
                 response.raise_for_status()
-                debug_print(f"Got response for {url} with status {response.status_code}", debug)
-                
-                # Add debug output for response content
-                if debug:
-                    debug_print(f"Response content preview for {url}:", debug)
-                    debug_print(response.text[:200] + "...", debug)
                 
                 course = Course.from_calendar_page(response.text, url)
-                debug_print(f"Successfully parsed course {course.code} from {url}", debug)
                 return course
                 
             except httpx.HTTPError as e:
-                error_msg = f"HTTP Error: {str(e)}"
-                debug_print(f"Error fetching course {url}: {error_msg}", debug)
-                if isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500:
-                    # Server error, retry after delay
+                # Retry for any connection error or server error
+                if isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)) or \
+                   (isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500):
+                    if debug:
+                        debug_print(f"Connection error for {url}, retrying in {retry_delay}s: {type(e).__name__}", debug)
                     await asyncio.sleep(retry_delay)
                     retries += 1
                     continue
@@ -153,23 +146,19 @@ async def fetch_courses(urls: List[str], client: httpx.AsyncClient, progress: Pr
                 return None
                 
             except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                debug_print(f"Error fetching/parsing course {url}: {error_msg}", debug)
-                if debug:
-                    import traceback
-                    debug_print(traceback.format_exc(), debug)
                 error_counts[type(e).__name__] = error_counts.get(type(e).__name__, 0) + 1
+                if debug:
+                    debug_print(f"Error parsing course {url}: {type(e).__name__}: {str(e)}", debug)
                 return None
                 
             finally:
                 progress.update(task, advance=1)
         
         if retries == max_retries:
-            debug_print(f"Max retries reached for {url}", debug)
+            if debug:
+                debug_print(f"Max retries reached for {url}", debug)
             error_counts["MaxRetriesExceeded"] = error_counts.get("MaxRetriesExceeded", 0) + 1
         return None
-    
-    debug_print(f"\nFetching {len(urls)} courses...", debug)
     
     # Fetch all courses in parallel
     tasks = [fetch_course(url) for url in urls]
@@ -179,20 +168,12 @@ async def fetch_courses(urls: List[str], client: httpx.AsyncClient, progress: Pr
     valid_courses = [c for c in results if c is not None]
     
     # Add debug info
-    debug_print(f"\nFetch summary:", debug)
-    debug_print(f"Total URLs: {len(urls)}", debug)
-    debug_print(f"Valid courses: {len(valid_courses)}", debug)
-    debug_print(f"Failed/None responses: {len(urls) - len(valid_courses)}", debug)
-    
-    if error_counts:
-        debug_print("\nError breakdown:", debug)
-        for error_type, count in error_counts.items():
-            debug_print(f"  {error_type}: {count} occurrences", debug)
-    
-    if debug and len(valid_courses) == 0:
-        debug_print("\nFirst few URLs that were attempted:", debug)
-        for url in urls[:5]:
-            debug_print(f"  {url}", debug)
+    if debug:
+        debug_print(f"Results: {len(valid_courses)} successful, {len(urls) - len(valid_courses)} failed", debug)
+        if error_counts:
+            debug_print("Errors:", debug)
+            for error_type, count in error_counts.items():
+                debug_print(f"  {error_type}: {count}", debug)
     
     return valid_courses
 
@@ -323,7 +304,8 @@ def calendar(
                         chunk_num = i//max_concurrent + 1
                         total_chunks = (len(dept_list) + max_concurrent - 1)//max_concurrent
                         
-                        debug_print(f"\nProcessing department chunk {chunk_num}/{total_chunks} ({len(chunk)} departments)", debug)
+                        if debug:
+                            debug_print(f"Processing department chunk {chunk_num}/{total_chunks}", debug)
                         
                         # Get course URLs for each department in parallel
                         dept_tasks = [get_course_links_from_department(dept_url, debug) for dept_url in chunk]
@@ -333,10 +315,12 @@ def calendar(
                         for dept_idx, dept_courses in enumerate(dept_results):
                             dept_url = chunk[dept_idx]
                             if not dept_courses:
-                                debug_print(f"No courses found in department: {dept_url}", debug)
+                                if debug:
+                                    debug_print(f"No courses found in department: {dept_url}", debug)
                                 continue
                             
-                            debug_print(f"\nFetching {len(dept_courses)} courses from department: {dept_url}", debug)
+                            if debug:
+                                debug_print(f"Found {len(dept_courses)} courses in {dept_url}", debug)
                             
                             # Fetch all courses for this department
                             courses = await fetch_courses(list(dept_courses), client, progress, debug)
@@ -346,10 +330,11 @@ def calendar(
                             progress.update(dept_task, advance=1)
                             progress.update(course_task, total=len(all_courses), completed=len(all_courses))
                             
-                            # Random delay between departments (0-10 seconds)
+                            # Random delay between departments (1-5 seconds)
                             if dept_idx < len(dept_results) - 1:  # No need to delay after last department in chunk
-                                delay = random.uniform(0, 10)
-                                debug_print(f"Waiting {delay:.1f} seconds before next department...", debug)
+                                delay = random.uniform(1, 5)
+                                if debug:
+                                    debug_print(f"Waiting {delay:.1f}s before next department", debug)
                                 await asyncio.sleep(delay)
                         
                         # Update progress description
@@ -358,10 +343,11 @@ def calendar(
                             description=f"[cyan]Processing departments {min(i + max_concurrent, len(dept_list))}/{len(dept_list)}..."
                         )
                         
-                        # Random delay between chunks (0-10 seconds)
+                        # Random delay between chunks (1-5 seconds)
                         if i + max_concurrent < len(dept_list):
-                            delay = random.uniform(0, 10)
-                            debug_print(f"\nWaiting {delay:.1f} seconds before next department chunk...", debug)
+                            delay = random.uniform(1, 5)
+                            if debug:
+                                debug_print(f"Waiting {delay:.1f}s before next chunk", debug)
                             await asyncio.sleep(delay)
         
         # Run department processing
