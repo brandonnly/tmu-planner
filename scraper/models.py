@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from decimal import Decimal
 from bs4 import BeautifulSoup
+import re
 
 class Course:
     def __init__(
@@ -34,47 +35,65 @@ class Course:
         self.weekly_contact = weekly_contact
 
     @classmethod
-    def from_calendar_page(cls, html: str, url: str, academic_year: str) -> "Course":
+    def from_calendar_page(cls, html: str, url: str) -> "Course":
         """
         Create a Course instance from a TMU calendar page HTML.
         
         Args:
             html: The HTML content of the course page
             url: The URL of the course page
-            academic_year: The academic year (e.g., "2023-2024")
             
         Returns:
             A Course instance populated with data from the page
         """
         soup = BeautifulSoup(html, 'html.parser')
         
+        # Extract academic year from URL (e.g., from /calendar/2024-2025/courses/...)
+        academic_year = re.search(r'/calendar/(\d{4}-\d{4})/', url).group(1)
+        
         # Extract course code and name from the h1 and h2
         code = soup.find('h1').text.strip()  # "ACC 100"
         name = soup.find('h2').text.strip()  # "Introductory Financial Accounting"
         
-        # Get description (first p tag after h2)
-        description = soup.find('h2').find_next('p').text.strip()
+        # Get description from the courseDescription div
+        description = soup.find('div', class_='courseDescription').text.strip()
         
-        # Extract various fields using their labels
+        # Extract various fields using their labels and classes
         def find_field(label: str) -> Optional[str]:
-            elem = soup.find(string=lambda x: x and label in x)
-            if not elem:
+            # Find the div containing our label
+            div = soup.find('div', class_=label.lower().replace(' ', ''))
+            if not div:
                 return None
-            # Get the next text element after the label
-            next_text = elem.find_next(text=True)
-            return next_text.strip() if next_text else None
+            # Find the span with class courseInfoValues
+            values_span = div.find('span', class_='courseInfoValues')
+            if not values_span:
+                return None
+            return values_span.get_text(strip=True)
         
         # Parse numeric fields
-        weekly_contact = find_field("Weekly Contact")
-        gpa_weight = Decimal(find_field("GPA Weight")) if find_field("GPA Weight") else None
-        course_count = Decimal(find_field("Course Count")) if find_field("Course Count") else None
-        billing_units = int(find_field("Billing Units")) if find_field("Billing Units") else None
+        weekly_contact = find_field("courseLength")
+        gpa_weight = Decimal(find_field("courseWeight")) if find_field("courseWeight") else None
+        course_count = Decimal(find_field("courseCount")) if find_field("courseCount") else None
+        billing_units = int(find_field("courseUnits")) if find_field("courseUnits") else None
         
-        # Get requisites
-        prerequisite = find_field("Prerequisites")
-        corequisite = find_field("Co-Requisites")
-        antirequisite = find_field("Antirequisites")
-        custom_requisite = find_field("Custom Requisites")
+        # Get requisites - these are in the requisites divs
+        def find_requisite(heading: str) -> Optional[str]:
+            # Find the h3 containing our heading
+            h3 = soup.find('h3', string=heading)
+            if not h3:
+                return None
+            # Get the next p tag
+            p = h3.find_next('p')
+            if not p:
+                return None
+            # Return the text
+            return ''.join(str(content) if isinstance(content, str) else content.get_text() 
+                          for content in p.contents).strip()
+        
+        prerequisite = find_requisite("Prerequisites")
+        corequisite = find_requisite("Co-Requisites")
+        antirequisite = find_requisite("Antirequisites")
+        custom_requisite = find_requisite("Custom Requisites")
         
         # Create and return a new Course instance
         return cls(

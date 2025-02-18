@@ -11,12 +11,6 @@ app = typer.Typer(
 @app.command()
 def scrape_course(
     url: str = typer.Argument(..., help="URL of the TMU course page to scrape"),
-    academic_year: str = typer.Option(
-        "2023-2024",
-        "--year",
-        "-y",
-        help="Academic year of the course (e.g., 2023-2024)",
-    ),
 ) -> None:
     """
     Scrape a single course from the TMU Academic Calendar and display its data.
@@ -30,7 +24,6 @@ def scrape_course(
         course = Course.from_calendar_page(
             html=response.text,
             url=url,
-            academic_year=academic_year,
         )
         
         # Display the course data nicely using Rich (included with Typer)
