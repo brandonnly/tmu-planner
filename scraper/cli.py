@@ -11,6 +11,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import random  # Add random for delays
+import json
+from pathlib import Path
 
 app = typer.Typer(
     name="tmu-scraper",
@@ -264,6 +266,7 @@ def calendar(
     print_courses: bool = typer.Option(False, "--print", "-p", help="Print all parsed courses using their string representation"),
     max_concurrent: int = typer.Option(5, "--max-concurrent", "-m", help="Maximum number of concurrent department scrapes"),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit the number of departments to scrape"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Path to save courses as JSON"),
 ) -> None:
     """Scrape all courses from the entire academic calendar."""
     try:
@@ -357,6 +360,17 @@ def calendar(
             typer.secho("No courses were successfully parsed", fg=typer.colors.RED)
             raise typer.Exit(1)
         
+        # Save to JSON if output path is specified
+        if output:
+            # Create parent directories if they don't exist
+            output.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Convert courses to dictionaries and save as JSON
+            courses_data = [course.to_dict() for course in all_courses]
+            with open(output, 'w', encoding='utf-8') as f:
+                json.dump(courses_data, f, indent=2, ensure_ascii=False)
+            typer.echo(f"\nSaved {len(all_courses)} courses to {output}")
+
         # Display results
         typer.echo(f"\nSuccessfully parsed {len(all_courses)} courses:")
         typer.echo("─" * 50)
