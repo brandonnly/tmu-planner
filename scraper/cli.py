@@ -13,6 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import random  # Add random for delays
 import json
 from pathlib import Path
+from db.operations import upload_courses
 
 app = typer.Typer(
     name="tmu-scraper",
@@ -260,16 +261,83 @@ def department(
         raise typer.Exit(1)
 
 @app.command()
+def upload(
+    json_path: Path = typer.Argument(..., help="Path to the JSON file containing courses"),
+    env: str = typer.Option("local", "--env", "-e", help="Supabase environment to use (local/production)"),
+) -> None:
+    """Upload courses from a JSON file to Supabase."""
+    try:
+        if not json_path.exists():
+            typer.secho(f"Error: File {json_path} does not exist", fg=typer.colors.RED)
+            raise typer.Exit(1)
+            
+        # Load courses from JSON
+        typer.echo(f"Loading courses from {json_path}")
+        with open(json_path, 'r', encoding='utf-8') as f:
+            courses_data = json.load(f)
+            
+        # Convert JSON data to Course objects
+        courses = []
+        for course_data in courses_data:
+            try:
+                course = Course(
+                    code=course_data['code'],
+                    name=course_data['name'],
+                    description=course_data['description'],
+                    url=course_data['url'],
+                    academic_year=course_data['academic_year'],
+                    gpa_weight=course_data.get('gpa_weight'),
+                    course_count=course_data.get('course_count'),
+                    billing_units=course_data.get('billing_units'),
+                    custom_requisite=course_data.get('custom_requisite'),
+                    prerequisite=course_data.get('prerequisite'),
+                    corequisite=course_data.get('corequisite'),
+                    antirequisite=course_data.get('antirequisite'),
+                    weekly_contact=course_data.get('weekly_contact'),
+                )
+                courses.append(course)
+            except Exception as e:
+                typer.secho(f"Error loading course: {str(e)}", fg=typer.colors.RED)
+                continue
+                
+        # Upload to Supabase
+        typer.echo(f"Uploading {len(courses)} courses to {env} database...")
+        processed, uploaded = upload_courses(courses, env=env)
+        typer.echo(f"Upload complete: {uploaded}/{processed} courses uploaded successfully")
+        
+    except Exception as e:
+        typer.secho(f"Error: {str(e)}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+@app.command()
 def calendar(
     url: str = typer.Argument(..., help="URL of the TMU academic calendar courses page"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug output"),
     print_courses: bool = typer.Option(False, "--print", "-p", help="Print all parsed courses using their string representation"),
     max_concurrent: int = typer.Option(5, "--max-concurrent", "-m", help="Maximum number of concurrent department scrapes"),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit the number of departments to scrape"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Path to save courses as JSON"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory for JSON files (defaults to output/courses)"),
+    upload_env: Optional[str] = typer.Option(None, "--upload", "-u", help="Upload to Supabase environment (local/production)"),
 ) -> None:
     """Scrape all courses from the entire academic calendar."""
     try:
+        # Extract academic year from URL
+        year_match = re.search(r'/calendar/(\d{4})-(\d{4})/', url)
+        if not year_match:
+            typer.secho("Could not extract academic year from URL", fg=typer.colors.RED)
+            raise typer.Exit(1)
+            
+        start_year, end_year = year_match.groups()
+        academic_year = f"{start_year}_{end_year}"
+        
+        # Set up output path
+        if output is None:
+            output = Path("output/courses")
+        output.mkdir(parents=True, exist_ok=True)
+        
+        # Create the full output path with academic year
+        output_file = output / f"{academic_year}.json"
+        
         # Get all department links using Selenium
         department_urls = get_department_links(url, debug)
         
@@ -360,16 +428,19 @@ def calendar(
             typer.secho("No courses were successfully parsed", fg=typer.colors.RED)
             raise typer.Exit(1)
         
-        # Save to JSON if output path is specified
+        # Upload to Supabase if requested
+        if upload_env:
+            typer.echo(f"\nUploading {len(all_courses)} courses to {upload_env} database...")
+            processed, uploaded = upload_courses(all_courses, env=upload_env)
+            typer.echo(f"Upload complete: {uploaded}/{processed} courses uploaded successfully")
+        
+        # Save to JSON if output path specified
         if output:
-            # Create parent directories if they don't exist
-            output.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Convert courses to dictionaries and save as JSON
+            # Save courses to JSON with academic year in filename
             courses_data = [course.to_dict() for course in all_courses]
-            with open(output, 'w', encoding='utf-8') as f:
+            with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(courses_data, f, indent=2, ensure_ascii=False)
-            typer.echo(f"\nSaved {len(all_courses)} courses to {output}")
+            typer.echo(f"\nSaved {len(all_courses)} courses to {output_file}")
 
         # Display results
         typer.echo(f"\nSuccessfully parsed {len(all_courses)} courses:")
