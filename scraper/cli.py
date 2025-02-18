@@ -322,170 +322,186 @@ def upload(
 
 @app.command()
 def calendar(
-    url: str = typer.Argument(..., help="URL of the TMU academic calendar courses page"),
+    urls: List[str] = typer.Argument(..., help="URLs of the TMU academic calendar course pages to scrape"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug output"),
     print_courses: bool = typer.Option(False, "--print", "-p", help="Print all parsed courses using their string representation"),
     max_concurrent: int = typer.Option(5, "--max-concurrent", "-m", help="Maximum number of concurrent department scrapes"),
-    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit the number of departments to scrape"),
+    limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Limit the number of departments to scrape per calendar"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output directory for JSON files (defaults to output/courses)"),
     upload_env: Optional[str] = typer.Option(None, "--upload", "-u", help="Upload to Supabase environment (local/production)"),
 ) -> None:
-    """Scrape all courses from the entire academic calendar."""
-    try:
-        # Extract academic year from URL
-        year_match = re.search(r'/calendar/(\d{4})-(\d{4})/', url)
-        if not year_match:
-            typer.secho("Could not extract academic year from URL", fg=typer.colors.RED)
-            raise typer.Exit(1)
+    """Scrape all courses from one or more academic calendars."""
+    all_courses_by_year = {}
+    
+    for url in urls:
+        try:
+            typer.echo(f"\nProcessing calendar: {url}")
+            typer.echo("─" * 50)
             
-        start_year, end_year = year_match.groups()
-        academic_year = f"{start_year}_{end_year}"
-        
-        # Set up output path
-        if output is None:
-            output = Path("output/courses")
-        output.mkdir(parents=True, exist_ok=True)
-        
-        # Create the full output path with academic year
-        output_file = output / f"{academic_year}.json"
-        
-        # Get all department links using Selenium
-        department_urls = get_department_links(url, debug)
-        
-        if not department_urls:
-            typer.secho("No departments found", fg=typer.colors.RED)
-            raise typer.Exit(1)
-        
-        # Apply limit if specified
-        if limit is not None:
-            department_urls = set(list(department_urls)[:limit])
-            typer.echo(f"\nLimiting to {limit} departments")
-        
-        typer.echo(f"\nFound {len(department_urls)} departments")
-        
-        # Process departments and their courses
-        all_courses = []
-        
-        async def process_departments():
-            # Create HTTP client with timeouts and limits for course fetching
-            timeout = httpx.Timeout(30.0, connect=10.0)
-            limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            # Extract academic year from URL
+            year_match = re.search(r'/calendar/(\d{4})-(\d{4})/', url)
+            if not year_match:
+                typer.secho(f"Could not extract academic year from URL: {url}", fg=typer.colors.RED)
+                continue
+                
+            start_year, end_year = year_match.groups()
+            academic_year = f"{start_year}_{end_year}"
             
-            async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
-                with Progress() as progress:
-                    dept_task = progress.add_task(
-                        f"[cyan]Processing {len(department_urls)} departments...",
-                        total=len(department_urls)
-                    )
-                    course_task = progress.add_task("[yellow]Total courses found...", total=None)
-                    
-                    # Process departments in chunks
-                    dept_list = list(department_urls)
-                    for i in range(0, len(dept_list), max_concurrent):
-                        chunk = dept_list[i:i + max_concurrent]
-                        chunk_num = i//max_concurrent + 1
-                        total_chunks = (len(dept_list) + max_concurrent - 1)//max_concurrent
+            # Get all department links using Selenium
+            department_urls = get_department_links(url, debug)
+            
+            if not department_urls:
+                typer.secho(f"No departments found for {academic_year}", fg=typer.colors.RED)
+                continue
+            
+            # Apply limit if specified
+            if limit is not None:
+                department_urls = set(list(department_urls)[:limit])
+                typer.echo(f"\nLimiting to {limit} departments")
+            
+            typer.echo(f"\nFound {len(department_urls)} departments")
+            
+            # Process departments and their courses
+            calendar_courses = []
+            
+            async def process_departments():
+                # Create HTTP client with timeouts and limits for course fetching
+                timeout = httpx.Timeout(30.0, connect=10.0)
+                limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                
+                async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+                    with Progress() as progress:
+                        dept_task = progress.add_task(
+                            f"[cyan]Processing {len(department_urls)} departments...",
+                            total=len(department_urls)
+                        )
+                        course_task = progress.add_task("[yellow]Total courses found...", total=None)
                         
-                        if debug:
-                            debug_print(f"Processing department chunk {chunk_num}/{total_chunks}", debug)
-                        
-                        # Get course URLs for each department in parallel
-                        dept_tasks = [get_course_links_from_department(dept_url, debug) for dept_url in chunk]
-                        dept_results = await asyncio.gather(*dept_tasks)
-                        
-                        # Process courses from each department
-                        for dept_idx, dept_courses in enumerate(dept_results):
-                            dept_url = chunk[dept_idx]
-                            if not dept_courses:
-                                if debug:
-                                    debug_print(f"No courses found in department: {dept_url}", debug)
-                                continue
+                        # Process departments in chunks
+                        dept_list = list(department_urls)
+                        for i in range(0, len(dept_list), max_concurrent):
+                            chunk = dept_list[i:i + max_concurrent]
+                            chunk_num = i//max_concurrent + 1
+                            total_chunks = (len(dept_list) + max_concurrent - 1)//max_concurrent
                             
                             if debug:
-                                debug_print(f"Found {len(dept_courses)} courses in {dept_url}", debug)
+                                debug_print(f"Processing department chunk {chunk_num}/{total_chunks}", debug)
                             
-                            # Fetch all courses for this department
-                            courses = await fetch_courses(list(dept_courses), client, progress, debug)
-                            all_courses.extend(courses)
+                            # Get course URLs for each department in parallel
+                            dept_tasks = [get_course_links_from_department(dept_url, debug) for dept_url in chunk]
+                            dept_results = await asyncio.gather(*dept_tasks)
                             
-                            # Update progress
-                            progress.update(dept_task, advance=1)
-                            progress.update(course_task, total=len(all_courses), completed=len(all_courses))
+                            # Process courses from each department
+                            for dept_idx, dept_courses in enumerate(dept_results):
+                                dept_url = chunk[dept_idx]
+                                if not dept_courses:
+                                    if debug:
+                                        debug_print(f"No courses found in department: {dept_url}", debug)
+                                    continue
+                                
+                                if debug:
+                                    debug_print(f"Found {len(dept_courses)} courses in {dept_url}", debug)
+                                
+                                # Fetch all courses for this department
+                                courses = await fetch_courses(list(dept_courses), client, progress, debug)
+                                calendar_courses.extend(courses)
+                                
+                                # Update progress
+                                progress.update(dept_task, advance=1)
+                                progress.update(course_task, total=len(calendar_courses), completed=len(calendar_courses))
+                                
+                                # Random delay between departments (1-5 seconds)
+                                if dept_idx < len(dept_results) - 1:  # No need to delay after last department in chunk
+                                    delay = random.uniform(1, 5)
+                                    if debug:
+                                        debug_print(f"Waiting {delay:.1f}s before next department", debug)
+                                    await asyncio.sleep(delay)
                             
-                            # Random delay between departments (1-5 seconds)
-                            if dept_idx < len(dept_results) - 1:  # No need to delay after last department in chunk
+                            # Update progress description
+                            progress.update(
+                                dept_task,
+                                description=f"[cyan]Processing departments {min(i + max_concurrent, len(dept_list))}/{len(dept_list)}..."
+                            )
+                            
+                            # Random delay between chunks (1-5 seconds)
+                            if i + max_concurrent < len(dept_list):
                                 delay = random.uniform(1, 5)
                                 if debug:
-                                    debug_print(f"Waiting {delay:.1f}s before next department", debug)
+                                    debug_print(f"Waiting {delay:.1f}s before next chunk", debug)
                                 await asyncio.sleep(delay)
-                        
-                        # Update progress description
-                        progress.update(
-                            dept_task,
-                            description=f"[cyan]Processing departments {min(i + max_concurrent, len(dept_list))}/{len(dept_list)}..."
-                        )
-                        
-                        # Random delay between chunks (1-5 seconds)
-                        if i + max_concurrent < len(dept_list):
-                            delay = random.uniform(1, 5)
-                            if debug:
-                                debug_print(f"Waiting {delay:.1f}s before next chunk", debug)
-                            await asyncio.sleep(delay)
-        
-        # Run department processing
-        asyncio.run(process_departments())
-        
-        if not all_courses:
-            typer.secho("No courses were successfully parsed", fg=typer.colors.RED)
-            raise typer.Exit(1)
-        
-        # Upload to Supabase if requested
-        if upload_env:
-            typer.echo(f"\nUploading {len(all_courses)} courses to {upload_env} database...")
-            try:
-                processed, uploaded = upload_courses(all_courses, env=upload_env)
-                typer.secho(
-                    f"Upload complete: {uploaded}/{processed} courses uploaded successfully",
-                    fg=typer.colors.GREEN
-                )
-            except Exception as e:
-                typer.secho(f"Upload failed: {str(e)}", fg=typer.colors.RED, err=True)
-                if output:
-                    typer.echo("Continuing with JSON export...")
-                else:
-                    raise typer.Exit(1)
-        
-        # Save to JSON if output path specified
-        if output:
-            # Save courses to JSON with academic year in filename
-            courses_data = [course.to_dict() for course in all_courses]
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(courses_data, f, indent=2, ensure_ascii=False)
-            typer.echo(f"\nSaved {len(all_courses)} courses to {output_file}")
-
-        # Display results
-        typer.echo(f"\nSuccessfully parsed {len(all_courses)} courses:")
-        typer.echo("─" * 50)
-        
-        if print_courses:
-            # Print using the model's string representation
-            for course in sorted(all_courses, key=lambda c: c.code):
-                typer.echo(str(course))
-        else:
-            # Group courses by department code
-            by_dept = {}
-            for course in all_courses:
-                dept_code = course.code.split()[0]
-                by_dept.setdefault(dept_code, []).append(course)
             
-            # Display courses grouped by department
-            for dept_code in sorted(by_dept.keys()):
-                typer.echo(f"\n{dept_code}:")
-                for course in sorted(by_dept[dept_code], key=lambda c: c.code):
-                    typer.echo(f"  {course.code}: {course.name}")
+            # Run department processing
+            asyncio.run(process_departments())
+            
+            if not calendar_courses:
+                typer.secho(f"No courses were successfully parsed for {academic_year}", fg=typer.colors.RED)
+                continue
                 
-    except Exception as e:
-        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+            # Store courses for this year
+            all_courses_by_year[academic_year] = calendar_courses
+            
+            # Save to JSON immediately if output path specified
+            if output:
+                # Set up output path
+                output_dir = Path(output) if output else Path("output/courses")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create the full output path with academic year
+                output_file = output_dir / f"{academic_year}.json"
+                
+                # Save courses to JSON with academic year in filename
+                courses_data = [course.to_dict() for course in calendar_courses]
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(courses_data, f, indent=2, ensure_ascii=False)
+                typer.echo(f"\nSaved {len(calendar_courses)} courses to {output_file}")
+            
+            # Upload immediately if requested
+            if upload_env:
+                typer.echo(f"\nUploading {len(calendar_courses)} courses for {academic_year} to {upload_env} database...")
+                try:
+                    processed, uploaded = upload_courses(calendar_courses, env=upload_env)
+                    typer.secho(
+                        f"Upload complete: {uploaded}/{processed} courses uploaded successfully",
+                        fg=typer.colors.GREEN
+                    )
+                except Exception as e:
+                    typer.secho(f"Upload failed for {academic_year}: {str(e)}", fg=typer.colors.RED, err=True)
+                    # Continue processing other years even if upload fails
+                    continue
+            
+            # Display results for this year
+            typer.echo(f"\nSuccessfully parsed {len(calendar_courses)} courses for {academic_year}:")
+            typer.echo("─" * 50)
+            
+            if print_courses:
+                # Print using the model's string representation
+                for course in sorted(calendar_courses, key=lambda c: c.code):
+                    typer.echo(str(course))
+            else:
+                # Group courses by department code
+                by_dept = {}
+                for course in calendar_courses:
+                    dept_code = course.code.split()[0]
+                    by_dept.setdefault(dept_code, []).append(course)
+                
+                # Display courses grouped by department
+                for dept_code in sorted(by_dept.keys()):
+                    typer.echo(f"\n{dept_code}:")
+                    for course in sorted(by_dept[dept_code], key=lambda c: c.code):
+                        typer.echo(f"  {course.code}: {course.name}")
+                        
+        except Exception as e:
+            typer.secho(f"Error processing {url}: {str(e)}", fg=typer.colors.RED)
+            continue
+    
+    # Final summary
+    typer.echo("\nSummary:")
+    typer.echo("─" * 50)
+    for year, courses in all_courses_by_year.items():
+        typer.echo(f"{year}: {len(courses)} courses")
+    
+    if not all_courses_by_year:
+        typer.secho("No courses were successfully processed from any calendar", fg=typer.colors.RED)
         raise typer.Exit(1)
 
 if __name__ == "__main__":
