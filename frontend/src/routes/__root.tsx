@@ -10,7 +10,7 @@ import {
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import { Turnstile } from "@marsidev/react-turnstile";
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import { supabase } from "@/lib/supabase";
 import { GoogleIcon } from "@/components/icons/google";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +28,11 @@ import { Toaster, toast } from "sonner";
 import { getCachedImage, revokeObjectURL } from "@/lib/utils";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
+import { Menu } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { DndContext } from "@dnd-kit/core";
+import type { Course } from "@/types/course";
+import { CourseCard } from "@/components/course-card";
 
 // Initialize PostHog at the top level
 if (import.meta.env.VITE_POSTHOG_KEY) {
@@ -193,29 +198,124 @@ function LoginDialog() {
 	);
 }
 
+function CourseSidebar({ courses }: { courses: Course[] }) {
+	const [search, setSearch] = useState("");
+
+	const filteredCourses = courses.filter(
+		(course) =>
+			course.courseCode.toLowerCase().includes(search.toLowerCase()) ||
+			course.courseName.toLowerCase().includes(search.toLowerCase()),
+	);
+
+	return (
+		<div className="h-full flex flex-col">
+			<div className="p-4">
+				<Input
+					placeholder="Search courses..."
+					value={search}
+					onChange={(e) => setSearch(e.target.value)}
+					className="w-full"
+				/>
+			</div>
+			<div className="flex-1 overflow-y-auto p-4">
+				<div className="space-y-2">
+					{filteredCourses.map((course) => (
+						<CourseCard
+							key={course.id}
+							id={course.id}
+							courseCode={course.courseCode}
+							courseName={course.courseName}
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+interface CourseContextType {
+	courses: Course[];
+}
+
+export const CourseContext = createContext<CourseContextType>({
+	courses: [],
+});
+export const useCourses = () => useContext(CourseContext);
+
 export const Route = createRootRoute({
 	component: RootComponent,
 });
 
 function RootComponent() {
+	const [sidebarOpen, setSidebarOpen] = useState(true);
+
+	const exampleCourses: Course[] = [
+		{ id: "1", courseCode: "CPS109", courseName: "Computer Science I" },
+		{ id: "2", courseCode: "CPS209", courseName: "Computer Science II" },
+		// ... rest of the courses
+	];
+
 	return (
 		<PostHogProvider client={posthog}>
-			<div className="h-screen flex flex-col">
-				<div className="flex gap-4 text-xl border-b p-4 items-center">
-					<div className="font-bold text-xl mr-4 flex items-center gap-3">
-						<img src="/Logo.png" alt="TMU Planner Logo" className="h-8 w-8" />
-						TMU Planner
+			<CourseContext.Provider value={{ courses: exampleCourses }}>
+				<DndContext>
+					<div className="h-screen">
+						<div
+							className={`
+								fixed top-0 left-0 h-screen w-[320px] border-r bg-background
+								transition-transform duration-300
+								${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+							`}
+						>
+							<CourseSidebar courses={exampleCourses} />
+						</div>
+						<div
+							className={`
+								h-screen flex flex-col
+								transition-all duration-300
+								${sidebarOpen ? "pl-[320px]" : "pl-0"}
+							`}
+						>
+							<div className="flex gap-4 text-xl border-b p-4 items-center">
+								<div className="font-bold text-xl flex items-center gap-3">
+									<Button
+										variant="ghost"
+										size="icon"
+										onClick={() => setSidebarOpen(!sidebarOpen)}
+										className="h-8 w-8 p-0"
+										type="button"
+									>
+										<Menu className="h-5 w-5" />
+									</Button>
+									<img
+										src="/Logo.png"
+										alt="TMU Planner Logo"
+										className="h-8 w-8"
+									/>
+									TMU Planner
+								</div>
+								<div className="flex-1" />
+								<LoginDialog />
+								<ThemeToggle />
+							</div>
+							<div className="flex-1 min-h-0">
+								<SidebarContext.Provider value={{ isOpen: sidebarOpen }}>
+									<Outlet />
+								</SidebarContext.Provider>
+							</div>
+						</div>
 					</div>
-					<div className="flex-1" />
-					<LoginDialog />
-					<ThemeToggle />
-				</div>
-				<div className="flex-1 min-h-0">
-					<Outlet />
-				</div>
-				<Toaster />
-				<TanStackRouterDevtools position="bottom-right" />
-			</div>
+				</DndContext>
+			</CourseContext.Provider>
 		</PostHogProvider>
 	);
 }
+
+interface SidebarContextType {
+	isOpen: boolean;
+}
+
+export const SidebarContext = createContext<SidebarContextType>({
+	isOpen: true,
+});
+export const useSidebar = () => useContext(SidebarContext);
