@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -84,7 +84,7 @@ function UserMenu({ user }: { user: User }) {
 				revokeObjectURL(avatarUrl);
 			}
 		};
-	}, [user.user_metadata.picture, user.id, avatarUrl]);
+	}, [user.user_metadata.picture, user.id]);
 
 	const handleSignOut = async () => {
 		const { error } = await supabase.auth.signOut();
@@ -112,11 +112,9 @@ function UserMenu({ user }: { user: User }) {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuLabel>My Account</DropdownMenuLabel>
-				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					onClick={handleSignOut}
-					className="text-red-600 dark:text-red-400"
+					className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
 				>
 					<LogOut className="mr-2 h-4 w-4" />
 					Sign out
@@ -126,8 +124,7 @@ function UserMenu({ user }: { user: User }) {
 	);
 }
 
-function LoginDialog() {
-	const [verified, setVerified] = useState(false);
+function LoginButton() {
 	const [user, setUser] = useState<User | null>(null);
 
 	useEffect(() => {
@@ -146,65 +143,14 @@ function LoginDialog() {
 		return () => subscription.unsubscribe();
 	}, []);
 
-	const handleGoogleSignIn = async () => {
-		posthog.capture("login_initiated", {});
-
-		const { error, data } = await supabase.auth.signInWithOAuth({
-			provider: "google",
-			options: {
-				queryParams: {
-					access_type: "offline",
-					prompt: "consent",
-				},
-			},
-		});
-
-		if (error) {
-			posthog.capture("login_error", {
-				error: error.message,
-			});
-			console.error("Error signing in with Google:", error.message);
-			toast.error("Failed to sign in with Google");
-		} else if (data.url) {
-			posthog.capture("login_success", {});
-			// Only show welcome toast when redirecting to Google
-			// The actual success will be handled when we return
-			toast.success("Redirecting to Google...");
-		}
-	};
-
 	if (user) {
 		return <UserMenu user={user} />;
 	}
 
 	return (
-		<Dialog>
-			<DialogTrigger asChild>
-				<Button variant="outline">Login</Button>
-			</DialogTrigger>
-			<DialogContent className="sm:max-w-md">
-				<DialogHeader>
-					<DialogTitle>Login to TMU Planner</DialogTitle>
-				</DialogHeader>
-				<div className="flex flex-col items-center gap-6 py-4">
-					<Turnstile
-						siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-						onSuccess={() => setVerified(true)}
-						onError={() => setVerified(false)}
-						onExpire={() => setVerified(false)}
-					/>
-					<Button
-						disabled={!verified}
-						variant="outline"
-						className="w-full bg-white hover:bg-gray-50 text-gray-900 font-medium border-gray-200"
-						onClick={handleGoogleSignIn}
-					>
-						<GoogleIcon />
-						<span>Sign in with Google</span>
-					</Button>
-				</div>
-			</DialogContent>
-		</Dialog>
+		<Link to="/login">
+			<Button variant="outline">Login</Button>
+		</Link>
 	);
 }
 
@@ -428,7 +374,7 @@ function RootComponent() {
 													TMU Planner
 												</div>
 												<div className="flex-1" />
-												<LoginDialog />
+												<LoginButton />
 												<ThemeToggle />
 											</div>
 											<div className="flex-1 min-h-0">
