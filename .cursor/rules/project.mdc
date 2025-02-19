@@ -66,12 +66,9 @@ The project is split into two main directories:
    - Version control for curriculum changes
 
 ## Deployment
-- Frontend hosting (TBD)
-- Domain options:
-  - tmuplanner.app (preferred)
-  - tmupath.info
-  - tmupath.app
-  - planner.tmu.brndn.ly
+- Frontend hosting: Cloudflare 
+- Main Branch: https://tmu.bly.dev
+- Phobos Branch: https://phobos.tmu.bly.dev
 
 ## Disclaimers
 - Not officially affiliated with Toronto Metropolitan University

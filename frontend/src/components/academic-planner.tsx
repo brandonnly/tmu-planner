@@ -1,19 +1,9 @@
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
-import {
-	DndContext,
-	useDroppable,
-	DragOverlay,
-	PointerSensor,
-	useSensor,
-	useSensors,
-} from "@dnd-kit/core";
+import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { CourseCard } from "@/components/course-card";
 import { useState } from "react";
 import { Leaf, Snowflake, Sun } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
-import { useSidebar } from "@/routes/__root";
 import { Input } from "@/components/ui/input";
 
 type Term = "Fall" | "Winter" | "Spring/Summer";
@@ -233,18 +223,16 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 	);
 }
 
-interface AcademicPlannerProps {
+export interface AcademicPlannerProps {
 	semesterCourses: Record<string, Course[]>;
 	courses: Course[];
-	onDragStart: (event: DragStartEvent) => void;
-	onDragEnd: (event: DragEndEvent) => void;
+	// onDragStart: (event: DragStartEvent) => void;
+	// onDragEnd: (event: DragEndEvent) => void;
 }
 
 export function AcademicPlanner({
 	semesterCourses,
 	courses,
-	onDragStart,
-	onDragEnd,
 }: AcademicPlannerProps) {
 	// Generate semesters starting from Fall 2021
 	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
