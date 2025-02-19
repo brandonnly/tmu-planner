@@ -23,6 +23,13 @@ CREATE TABLE "public"."course"(
 
 ALTER TABLE "public"."course" ENABLE ROW LEVEL SECURITY;
 
+-- Add generated column for full text search
+ALTER TABLE "public"."course"
+    ADD COLUMN fts tsvector GENERATED ALWAYS AS (setweight(to_tsvector('english', coalesce(code, '')), 'A') || setweight(to_tsvector('english', coalesce(name, '')), 'B')) STORED;
+
+-- Create GIN index for full text search
+CREATE INDEX course_fts_idx ON public.course USING GIN(fts);
+
 CREATE TABLE "public"."user_plan"(
     "id" uuid NOT NULL DEFAULT gen_random_uuid(),
     "created_at" timestamp with time zone NOT NULL,
