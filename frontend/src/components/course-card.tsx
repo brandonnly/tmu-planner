@@ -34,7 +34,7 @@ export function CourseCard({ courseCode, courseName, id }: CourseCardProps) {
 			{...listeners}
 			{...attributes}
 			onClick={handleClick}
-			className={`relative w-64 p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+			className={`relative w-full p-4 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
 				isDragging ? "opacity-50" : ""
 			}`}
 		>

@@ -209,8 +209,13 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 							skeletonItems.map((item) => (
 								<div
 									key={item.id}
-									className="h-16 bg-muted animate-pulse rounded-lg"
-								/>
+									className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative"
+								>
+									<div className="space-y-1">
+										<div className="h-5 w-24 bg-muted animate-pulse rounded" />
+										<div className="h-4 w-48 bg-muted animate-pulse rounded" />
+									</div>
+								</div>
 							))
 						: search.trim()
 							? searchResults.map((course) => (
