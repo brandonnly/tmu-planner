@@ -109,6 +109,8 @@ interface SemesterColumnProps {
 	courses: Course[];
 	"data-first-semester"?: string;
 	"data-academic-year"?: number;
+	onDeleteCourse?: (semesterId: string, courseId: string) => void;
+	onCourseClick?: (semesterId: string, courseId: string) => void;
 }
 
 function SemesterColumn({
@@ -116,6 +118,8 @@ function SemesterColumn({
 	year,
 	id,
 	courses,
+	onDeleteCourse,
+	onCourseClick,
 	...props
 }: SemesterColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
@@ -136,6 +140,18 @@ function SemesterColumn({
 				return <Sun className="w-4 h-4 text-yellow-500" />;
 			default:
 				return null;
+		}
+	};
+
+	const handleDeleteCourse = (courseId: string) => {
+		if (onDeleteCourse) {
+			onDeleteCourse(id, courseId);
+		}
+	};
+
+	const handleCourseClick = (courseId: string) => {
+		if (onCourseClick) {
+			onCourseClick(id, courseId);
 		}
 	};
 
@@ -166,6 +182,8 @@ function SemesterColumn({
 										id={course.id}
 										courseCode={course.courseCode}
 										courseName={course.courseName}
+										onDelete={handleDeleteCourse}
+										onClick={() => handleCourseClick(course.id)}
 									/>
 								))}
 							</SortableContext>
@@ -183,12 +201,16 @@ interface AcademicYearProps {
 	startYear: number;
 	semesters: Semester[];
 	semesterCourses: Record<string, Course[]>;
+	onDeleteCourse?: (semesterId: string, courseId: string) => void;
+	onCourseClick?: (semesterId: string, courseId: string) => void;
 }
 
 function AcademicYear({
 	startYear,
 	semesters,
 	semesterCourses,
+	onDeleteCourse,
+	onCourseClick,
 }: AcademicYearProps) {
 	const { hideSpring } = useContext(SpringSummerContext);
 	const visibleSemesters = hideSpring
@@ -208,6 +230,8 @@ function AcademicYear({
 						courses={semesterCourses[semester.id] || []}
 						data-first-semester={index === 0 ? "true" : "false"}
 						data-academic-year={startYear}
+						onDeleteCourse={onDeleteCourse}
+						onCourseClick={onCourseClick}
 					/>
 				))}
 			</div>
@@ -220,9 +244,15 @@ export interface AcademicPlannerProps {
 	courses: Course[];
 	// onDragStart: (event: DragStartEvent) => void;
 	// onDragEnd: (event: DragEndEvent) => void;
+	onDeleteCourse?: (semesterId: string, courseId: string) => void;
+	onCourseClick?: (semesterId: string, courseId: string) => void;
 }
 
-export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
+export function AcademicPlanner({
+	semesterCourses,
+	onDeleteCourse,
+	onCourseClick,
+}: AcademicPlannerProps) {
 	// Generate semesters starting from Fall 2021
 	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
 	const academicYears = groupSemestersByAcademicYear(semesters);
@@ -363,6 +393,8 @@ export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 									startYear={Number.parseInt(startYear)}
 									semesters={yearSemesters}
 									semesterCourses={semesterCourses}
+									onDeleteCourse={onDeleteCourse}
+									onCourseClick={onCourseClick}
 								/>
 							</div>
 						),

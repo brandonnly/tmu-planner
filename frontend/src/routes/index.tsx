@@ -669,6 +669,51 @@ function Index() {
 			: rectIntersection(args);
 	}, []);
 
+	// Handle deleting a course from a semester
+	const handleDeleteCourse = useCallback(
+		(semesterId: string, courseId: string) => {
+			setSemesterCourses((prev) => {
+				const newSemesterCourses = { ...prev };
+
+				// Check if the semester exists
+				if (newSemesterCourses[semesterId]) {
+					// Remove the course from the semester
+					newSemesterCourses[semesterId] = newSemesterCourses[
+						semesterId
+					].filter((course) => course.id !== courseId);
+				}
+
+				return newSemesterCourses;
+			});
+		},
+		[],
+	);
+
+	// Handle clicking on a course card
+	const handleCourseClick = useCallback(
+		(semesterId: string, courseId: string) => {
+			// Find the course in the semester
+			const course = semesterCourses[semesterId]?.find(
+				(course) => course.id === courseId,
+			);
+
+			if (course) {
+				// Show information about the course
+				toast.info(`${course.courseCode}: ${course.courseName}`, {
+					description: "Course details would be shown here.",
+					duration: 3000,
+				});
+
+				// You can implement more functionality here, such as:
+				// - Opening a modal with course details
+				// - Navigating to a course details page
+				// - Showing prerequisite information
+				// - etc.
+			}
+		},
+		[semesterCourses],
+	);
+
 	return (
 		<CourseContext.Provider value={{ courses, setCourses: () => {} }}>
 			<SemesterContext.Provider value={{ semesterCourses, setSemesterCourses }}>
@@ -733,6 +778,8 @@ function Index() {
 											<AcademicPlanner
 												semesterCourses={semesterCourses}
 												courses={courses}
+												onDeleteCourse={handleDeleteCourse}
+												onCourseClick={handleCourseClick}
 											/>
 										</div>
 									</div>
