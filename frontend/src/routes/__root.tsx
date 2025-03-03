@@ -3,6 +3,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
 import { Toaster } from "sonner";
+import { SpringSummerProvider } from "@/components/spring-summer-provider";
 
 // Initialize PostHog at the top level
 if (import.meta.env.VITE_POSTHOG_KEY && import.meta.env.PROD) {
@@ -25,8 +26,10 @@ function RootComponent() {
 	return (
 		<ThemeProvider defaultTheme="system" storageKey="theme">
 			<PostHogProvider client={posthog}>
-				<Outlet />
-				<Toaster />
+				<SpringSummerProvider>
+					<Outlet />
+					<Toaster />
+				</SpringSummerProvider>
 			</PostHogProvider>
 		</ThemeProvider>
 	);

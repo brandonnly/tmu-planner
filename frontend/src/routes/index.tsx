@@ -83,41 +83,18 @@ function UserMenu({ user }: { user: User }) {
 		};
 	}, [user.user_metadata.picture, user.id]);
 
-	const handleSignOut = async () => {
-		const { error } = await supabase.auth.signOut();
-		if (error) {
-			console.error("Error signing out:", error.message);
-			toast.error("Failed to sign out");
-		} else {
-			toast.success("Signed out successfully");
-		}
-	};
-
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" className="gap-2 py-6">
-					<Avatar className="h-8 w-8">
-						<AvatarImage src={avatarUrl} alt={user.user_metadata.full_name} />
-						<AvatarFallback>
-							{user.user_metadata.full_name?.[0]?.toUpperCase()}
-						</AvatarFallback>
-					</Avatar>
-					<span className="text-sm font-normal">
-						{user.user_metadata.full_name}
-					</span>
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end">
-				<DropdownMenuItem
-					onClick={handleSignOut}
-					className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
-				>
-					<LogOut className="mr-2 h-4 w-4" />
-					Sign out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+		<div className="flex items-center gap-2">
+			<Avatar className="h-8 w-8">
+				<AvatarImage src={avatarUrl} alt={user.user_metadata.full_name} />
+				<AvatarFallback>
+					{user.user_metadata.full_name?.[0]?.toUpperCase()}
+				</AvatarFallback>
+			</Avatar>
+			<span className="text-sm font-normal">
+				{user.user_metadata.full_name}
+			</span>
+		</div>
 	);
 }
 
@@ -279,6 +256,7 @@ function CourseSidebar({
 						value={search}
 						onChange={handleSearchChange}
 						className="w-full pr-8"
+						autoFocus
 					/>
 					{search && (
 						<Button

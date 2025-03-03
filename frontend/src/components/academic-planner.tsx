@@ -1,8 +1,9 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { SortableCourseCard } from "@/components/course-card";
-
 import { Leaf, Snowflake, Sun } from "lucide-react";
+import { useContext } from "react";
+import { SpringSummerContext } from "@/contexts";
 
 import {
 	SortableContext,
@@ -180,11 +181,16 @@ function AcademicYear({
 	semesters,
 	semesterCourses,
 }: AcademicYearProps) {
+	const { hideSpring } = useContext(SpringSummerContext);
+	const visibleSemesters = hideSpring
+		? semesters.filter((semester) => semester.term !== "Spring/Summer")
+		: semesters;
+
 	return (
 		<div className="h-full flex flex-col">
 			<h2 className="text-lg font-bold mb-2">{`${startYear}-${startYear + 1}`}</h2>
 			<div className="flex gap-2 flex-1 min-h-0">
-				{semesters.map((semester) => (
+				{visibleSemesters.map((semester) => (
 					<SemesterColumn
 						key={semester.id}
 						term={semester.term}
