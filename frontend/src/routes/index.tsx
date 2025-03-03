@@ -19,7 +19,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Menu, Trash2 } from "lucide-react";
+import { LogOut, Menu, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { getCachedImage, revokeObjectURL } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -273,12 +273,28 @@ function CourseSidebar({
 	return (
 		<div ref={setNodeRef} className="h-full flex flex-col">
 			<div className="p-4 border-b">
-				<Input
-					placeholder="Search for course..."
-					value={search}
-					onChange={handleSearchChange}
-					className="w-full"
-				/>
+				<div className="relative">
+					<Input
+						placeholder="Search for course..."
+						value={search}
+						onChange={handleSearchChange}
+						className="w-full pr-8"
+					/>
+					{search && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 hover:bg-accent hover:text-accent-foreground"
+							onClick={() => {
+								setSearch("");
+								setSearchResults(courses);
+							}}
+						>
+							<X className="h-4 w-4" />
+							<span className="sr-only">Clear search</span>
+						</Button>
+					)}
+				</div>
 			</div>
 			<div className="flex-1 min-h-0 relative">
 				{/* Trash overlay - only shown when dragging from planner and hovering over sidebar content */}
