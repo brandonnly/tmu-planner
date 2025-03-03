@@ -136,15 +136,59 @@ function LoginButton() {
 
 function CourseSidebar({ courses }: { courses: Course[] }) {
 	const [search, setSearch] = useState("");
+	const [searchResults, setSearchResults] = useState<Course[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
 	const { setNodeRef, isOver } = useDroppable({
 		id: "sidebar",
 	});
 
-	const filteredCourses = courses.filter(
-		(course) =>
-			course.courseCode.toLowerCase().includes(search.toLowerCase()) ||
-			course.courseName.toLowerCase().includes(search.toLowerCase()),
-	);
+	useEffect(() => {
+		const searchCourses = async () => {
+			if (!search.trim()) {
+				setSearchResults(courses);
+				return;
+			}
+
+			setIsLoading(true);
+			try {
+				const { data, error } = await supabase.rpc("search_courses", {
+					search_query: search.trim(),
+				});
+
+				if (error) {
+					console.error("Error searching courses:", error);
+					toast.error("Failed to search courses");
+					return;
+				}
+
+				if (!data) {
+					setSearchResults([]);
+					return;
+				}
+
+				setSearchResults(
+					data.map((course) => ({
+						id: course.id,
+						courseCode: course.code,
+						courseName: course.name,
+					})),
+				);
+			} catch (error) {
+				console.error("Error searching courses:", error);
+				toast.error("Failed to search courses");
+			} finally {
+				setIsLoading(false);
+			}
+		};
+
+		const debounceTimeout = setTimeout(searchCourses, 300);
+		return () => clearTimeout(debounceTimeout);
+	}, [search, courses]);
+
+	// Create a stable array of skeleton items to avoid key warnings
+	const skeletonItems = Array.from({ length: 3 }, (_, i) => ({
+		id: `loading-skeleton-${i}`,
+	}));
 
 	return (
 		<div ref={setNodeRef} className="h-full flex flex-col">
@@ -160,14 +204,31 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 				className={`flex-1 overflow-y-auto p-4 transition-colors ${isOver ? "bg-muted/50" : ""}`}
 			>
 				<div className="space-y-2">
-					{filteredCourses.map((course) => (
-						<CourseCard
-							key={course.id}
-							id={course.id}
-							courseCode={course.courseCode}
-							courseName={course.courseName}
-						/>
-					))}
+					{isLoading
+						? // Show loading skeletons
+							skeletonItems.map((item) => (
+								<div
+									key={item.id}
+									className="h-16 bg-muted animate-pulse rounded-lg"
+								/>
+							))
+						: search.trim()
+							? searchResults.map((course) => (
+									<CourseCard
+										key={course.id}
+										id={course.id}
+										courseCode={course.courseCode}
+										courseName={course.courseName}
+									/>
+								))
+							: courses.map((course) => (
+									<CourseCard
+										key={course.id}
+										id={course.id}
+										courseCode={course.courseCode}
+										courseName={course.courseName}
+									/>
+								))}
 				</div>
 			</div>
 			<div className="p-4 border-t">
@@ -241,18 +302,7 @@ export const useCourses = () => useContext(CourseContext); // Added useCourses
 function Index() {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [activeCourse, setActiveCourse] = useState<Course | null>(null);
-	const [courses] = useState<Course[]>([
-		{ id: "1", courseCode: "CPS109", courseName: "Computer Science I" },
-		{ id: "2", courseCode: "CPS209", courseName: "Computer Science II" },
-		{ id: "3", courseCode: "CPS305", courseName: "Data Structures" },
-		{ id: "4", courseCode: "CPS393", courseName: "Introduction to C and UNIX" },
-		{ id: "5", courseCode: "CPS400", courseName: "Computer Science III" },
-		{ id: "6", courseCode: "CPS401", courseName: "Computer Science IV" },
-		{ id: "7", courseCode: "CPS402", courseName: "Computer Science V" },
-		{ id: "8", courseCode: "CPS403", courseName: "Computer Science VI" },
-		{ id: "9", courseCode: "CPS404", courseName: "Computer Science VII" },
-		{ id: "10", courseCode: "CPS405", courseName: "Computer Science VIII" },
-	]);
+	const [courses] = useState<Course[]>([]);
 	const [semesterCourses, setSemesterCourses] = useState<
 		Record<string, Course[]>
 	>({});
@@ -375,13 +425,11 @@ function Index() {
 											TMU Planner
 										</div>
 										<div className="flex-1" />
-										{/* Remove links from here */}
 										<LoginButton />
 										<ThemeToggle />
 									</div>
 									<div className="flex-1 min-h-0">
 										<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
-											{/* This is where the AcademicPlanner was originally, now it's the main content */}
 											<AcademicPlanner
 												semesterCourses={semesterCourses}
 												courses={courses}

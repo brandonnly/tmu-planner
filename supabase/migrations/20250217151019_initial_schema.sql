@@ -1,3 +1,6 @@
+-- Enable pg_trgm extension for fuzzy text search
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TYPE "public"."term" AS enum(
     'Fall',
     'Winter',
@@ -23,12 +26,10 @@ CREATE TABLE "public"."course"(
 
 ALTER TABLE "public"."course" ENABLE ROW LEVEL SECURITY;
 
--- Add generated column for full text search
-ALTER TABLE "public"."course"
-    ADD COLUMN fts tsvector GENERATED ALWAYS AS (setweight(to_tsvector('english', coalesce(code, '')), 'A') || setweight(to_tsvector('english', coalesce(name, '')), 'B')) STORED;
+-- Create GIN indexes for fuzzy search
+CREATE INDEX course_code_trgm_idx ON public.course USING GIN(code gin_trgm_ops);
 
--- Create GIN index for full text search
-CREATE INDEX course_fts_idx ON public.course USING GIN(fts);
+CREATE INDEX course_name_trgm_idx ON public.course USING GIN(name gin_trgm_ops);
 
 CREATE TABLE "public"."user_plan"(
     "id" uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -330,4 +331,86 @@ CREATE POLICY "Users can update their own plans" ON "public"."user_plan"
 CREATE POLICY "Users can delete their own plans" ON "public"."user_plan"
     FOR DELETE TO public
         USING (user_id = auth.uid());
+
+-- Create function for fuzzy course search
+CREATE OR REPLACE FUNCTION public.search_courses(search_query text)
+    RETURNS SETOF course
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    AS $$
+BEGIN
+    -- If the search is exactly 3 characters, make it uppercase
+    IF length(trim(search_query)) = 3 THEN
+        search_query := upper(search_query);
+    END IF;
+    -- Add space between course code and number if needed
+    search_query := regexp_replace(search_query, '([a-zA-Z]{3})(\d+)', '\1 \2', 'g');
+    RETURN QUERY WITH ranked_courses AS(
+        SELECT
+            c.*,
+            CASE
+            -- Exact match on code (after normalizing spaces) gets highest score (10.0)
+            WHEN upper(regexp_replace(c.code, '\s+', '', 'g')) = upper(regexp_replace(search_query, '\s+', '', 'g')) THEN
+                10.0
+                -- Exact match on code with spaces gets second highest score (9.0)
+            WHEN upper(c.code) = upper(search_query) THEN
+                9.0
+                -- Starts with the search query gets high score (8.0)
+            WHEN upper(regexp_replace(c.code, '\s+', '', 'g')) LIKE upper(regexp_replace(search_query, '\s+', '', 'g')) || '%' THEN
+                8.0
+                -- Close code match gets medium score (2.0 * similarity)
+            WHEN similarity(upper(regexp_replace(c.code, '\s+', '', 'g')), upper(regexp_replace(search_query, '\s+', '', 'g'))) > 0.4 THEN
+                similarity(upper(regexp_replace(c.code, '\s+', '', 'g')), upper(regexp_replace(search_query, '\s+', '', 'g'))) * 2.0
+                -- Name match gets normal score
+            ELSE
+                similarity(upper(c.name), upper(search_query))
+            END AS search_rank
+        FROM
+            course c
+        WHERE
+            -- Lower threshold for course codes, normalized comparison
+            similarity(upper(regexp_replace(c.code, '\s+', '', 'g')), upper(regexp_replace(search_query, '\s+', '', 'g'))) > 0.4
+            -- Lower threshold for course names
+            OR similarity(upper(c.name), upper(search_query)) > 0.2
+            -- Direct match on code (after normalizing)
+            OR upper(regexp_replace(c.code, '\s+', '', 'g')) = upper(regexp_replace(search_query, '\s+', '', 'g'))
+            -- Starts with search query
+            OR upper(regexp_replace(c.code, '\s+', '', 'g')) LIKE upper(regexp_replace(search_query, '\s+', '', 'g')) || '%'
+)
+    SELECT
+        rc.id,
+        rc.code,
+        rc.name,
+        rc.description,
+        rc.url,
+        rc.academic_year,
+        rc.custom_requisite,
+        rc.prerequisite,
+        rc.corequisite,
+        rc.antirequisite,
+        rc.weekly_contact,
+        rc.gpa_weight,
+        rc.course_count,
+        rc.billing_units
+    FROM( SELECT DISTINCT ON(code)
+            *
+        FROM
+            ranked_courses
+        WHERE
+            search_rank > 0
+        ORDER BY
+            code,
+            search_rank DESC,
+            academic_year DESC) rc
+ORDER BY
+    rc.search_rank DESC,
+    rc.code
+LIMIT 20;
+END;
+$$;
+
+-- Grant access to the function
+GRANT EXECUTE ON FUNCTION public.search_courses TO authenticated;
+
+GRANT EXECUTE ON FUNCTION public.search_courses TO anon;
 
