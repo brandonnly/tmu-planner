@@ -325,25 +325,77 @@ function CourseSidebar({
 									<div className="space-y-2">
 										<p className="font-medium text-sm">Example course codes:</p>
 										<div className="flex gap-2 justify-center flex-wrap">
-											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+											<Button
+												variant="outline"
+												size="sm"
+												className="bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("PLX333");
+													performSearch("PLX333");
+												}}
+											>
 												PLX333
-											</div>
-											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+											</Button>
+											<Button
+												variant="outline"
+												size="sm"
+												className="bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("GCM750");
+													performSearch("GCM750");
+												}}
+											>
 												GCM750
-											</div>
-											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+											</Button>
+											<Button
+												variant="outline"
+												size="sm"
+												className="bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("CPS847");
+													performSearch("CPS847");
+												}}
+											>
 												CPS847
-											</div>
+											</Button>
 										</div>
 									</div>
 									<div className="space-y-2">
-										<p className="font-medium text-sm">Example course names:</p>
-										<div className="space-y-2">
-											<p className="text-sm">Popular Culture</p>
-											<p className="text-sm">
-												Introductory American Sign Language I
-											</p>
-											<p className="text-sm">Alternative Energies</p>
+										<p className="font-medium text-sm">Try searching by:</p>
+										<div className="flex flex-col items-center gap-2">
+											<Button
+												variant="outline"
+												size="sm"
+												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("CPS Networks");
+													performSearch("CPS Networks");
+												}}
+											>
+												CPS Networks
+											</Button>
+											<Button
+												variant="outline"
+												size="sm"
+												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("Database Systems");
+													performSearch("Database Systems");
+												}}
+											>
+												Database Systems
+											</Button>
+											<Button
+												variant="outline"
+												size="sm"
+												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
+												onClick={() => {
+													setSearch("Calculus");
+													performSearch("Calculus");
+												}}
+											>
+												Calculus
+											</Button>
 										</div>
 									</div>
 								</div>

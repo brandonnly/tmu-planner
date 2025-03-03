@@ -338,14 +338,35 @@ CREATE OR REPLACE FUNCTION public.search_courses(search_query text)
     LANGUAGE plpgsql
     SECURITY DEFINER
     AS $$
+DECLARE
+    -- Function to extract acronym from a string (e.g., "Artificial Intelligence" -> "AI")
+    acronym text;
+    -- Function to extract words for topic matching
+    search_words text[];
+    -- Variable to store word match ratio
+    word_match_ratio float;
+    -- Department code from search query (if any)
+    dept_code text;
+    -- Search terms after department code
+    remaining_terms text;
 BEGIN
     -- If the search is exactly 3 characters, make it uppercase
     IF length(trim(search_query)) = 3 THEN
         search_query := upper(search_query);
     END IF;
+    -- Create acronym from course name for matching (keep original case)
+    acronym := regexp_replace(search_query, '[^A-Za-z]', '', 'g');
+    -- Split search query into words for topic matching
+    search_words := regexp_split_to_array(lower(search_query), '\s+');
+    -- Extract department code and remaining terms if query starts with a potential department code
+    IF array_length(search_words, 1) > 1 AND length(search_words[1]) = 3 THEN
+        dept_code := upper(search_words[1]);
+        remaining_terms := substr(search_query, 5);
+        -- Skip first word + space
+    END IF;
     -- Add space between course code and number if needed
     search_query := regexp_replace(search_query, '([a-zA-Z]{3})(\d+)', '\1 \2', 'g');
-    RETURN QUERY WITH ranked_courses AS(
+    RETURN QUERY WITH ranked_courses AS (
         SELECT
             c.*,
             CASE
@@ -358,7 +379,62 @@ BEGIN
                 -- Starts with the search query gets high score (8.0)
             WHEN upper(regexp_replace(c.code, '\s+', '', 'g')) LIKE upper(regexp_replace(search_query, '\s+', '', 'g')) || '%' THEN
                 8.0
-                -- Close code match gets medium score (2.0 * similarity)
+                -- Exact match on course number gets high score (7.0)
+            WHEN regexp_replace(c.code, '[^0-9]', '', 'g') = regexp_replace(search_query, '[^0-9]', '', 'g')
+                AND length(regexp_replace(search_query, '[^0-9]', '', 'g')) > 0 THEN
+                7.0
+                -- Department code + name match gets high score (6.0 * similarity of name part)
+            WHEN dept_code IS NOT NULL
+                AND split_part(c.code, ' ', 1) = dept_code
+                AND (
+                    -- Strong match: remaining terms appear in name in sequence
+                    position(lower(remaining_terms) IN lower(c.name)) > 0
+                    -- Or good similarity with name
+                    OR similarity(lower(c.name), lower(remaining_terms)) > 0.4) THEN
+                6.0 * GREATEST(
+                    CASE WHEN position(lower(remaining_terms) IN lower(c.name)) > 0 THEN
+                        1.0
+                    ELSE
+                        similarity(lower(c.name), lower(remaining_terms))
+                    END, 0.5)
+                -- Acronym match gets good score (5.0)
+            WHEN length(acronym) >= 2
+                AND (upper(regexp_replace(regexp_replace(c.name, '([A-Z])([A-Z][a-z])', '\1 \2', 'g'), '[^A-Z]', '', 'g')) = upper(acronym)
+                    OR position('(' || upper(acronym) || ')' IN upper(c.description)) > 0) THEN
+                5.0
+                -- Topic/keyword match in name gets good score (4.0 * word match ratio)
+            WHEN array_length(search_words, 1) > 0
+                AND EXISTS (
+                    SELECT
+                        1
+                    FROM
+                        unnest(search_words) word
+                    WHERE
+                        position(word IN lower(c.name)) > 0) THEN
+                4.0 *(
+                    SELECT
+                        CAST(count(*) AS float) / array_length(search_words, 1)
+                    FROM
+                        unnest(search_words) word
+                    WHERE
+                        position(word IN lower(c.name)) > 0)
+                    -- Topic/keyword match in description gets lower score (3.0 * word match ratio)
+            WHEN array_length(search_words, 1) > 0
+                AND EXISTS (
+                    SELECT
+                        1
+                    FROM
+                        unnest(search_words) word
+                    WHERE
+                        position(word IN lower(c.description)) > 0) THEN
+                3.0 *(
+                    SELECT
+                        CAST(count(*) AS float) / array_length(search_words, 1)
+                    FROM
+                        unnest(search_words) word
+                    WHERE
+                        position(word IN lower(c.description)) > 0)
+                    -- Close code match gets medium score (2.0 * similarity)
             WHEN similarity(upper(regexp_replace(c.code, '\s+', '', 'g')), upper(regexp_replace(search_query, '\s+', '', 'g'))) > 0.4 THEN
                 similarity(upper(regexp_replace(c.code, '\s+', '', 'g')), upper(regexp_replace(search_query, '\s+', '', 'g'))) * 2.0
                 -- Name match gets normal score
@@ -376,36 +452,83 @@ BEGIN
             OR upper(regexp_replace(c.code, '\s+', '', 'g')) = upper(regexp_replace(search_query, '\s+', '', 'g'))
             -- Starts with search query
             OR upper(regexp_replace(c.code, '\s+', '', 'g')) LIKE upper(regexp_replace(search_query, '\s+', '', 'g')) || '%'
-)
-    SELECT
-        rc.id,
-        rc.code,
-        rc.name,
-        rc.description,
-        rc.url,
-        rc.academic_year,
-        rc.custom_requisite,
-        rc.prerequisite,
-        rc.corequisite,
-        rc.antirequisite,
-        rc.weekly_contact,
-        rc.gpa_weight,
-        rc.course_count,
-        rc.billing_units
-    FROM( SELECT DISTINCT ON(code)
-            *
-        FROM
-            ranked_courses
-        WHERE
-            search_rank > 0
-        ORDER BY
-            code,
-            search_rank DESC,
-            academic_year DESC) rc
-ORDER BY
-    rc.search_rank DESC,
-    rc.code
-LIMIT 20;
+            -- Match on course number
+            OR (regexp_replace(c.code, '[^0-9]', '', 'g') = regexp_replace(search_query, '[^0-9]', '', 'g')
+                AND length(regexp_replace(search_query, '[^0-9]', '', 'g')) > 0)
+            -- Department code + name match
+            OR (dept_code IS NOT NULL
+                AND split_part(c.code, ' ', 1) = dept_code
+                AND (position(lower(remaining_terms) IN lower(c.name)) > 0
+                    OR similarity(lower(c.name), lower(remaining_terms)) > 0.4))
+            -- Acronym match
+            OR (length(acronym) >= 2
+                AND (upper(regexp_replace(regexp_replace(c.name, '([A-Z])([A-Z][a-z])', '\1 \2', 'g'), '[^A-Z]', '', 'g')) = upper(acronym)
+                    OR position('(' || upper(acronym) || ')' IN upper(c.description)) > 0))
+            -- Topic/keyword match in name
+            OR (array_length(search_words, 1) > 0
+                AND EXISTS (
+                    SELECT
+                        1
+                    FROM
+                        unnest(search_words) word
+                    WHERE
+                        position(word IN lower(c.name)) > 0)
+                    AND (
+                        SELECT
+                            CAST(count(*) AS float) / array_length(search_words, 1)
+                        FROM
+                            unnest(search_words) word
+                        WHERE
+                            position(word IN lower(c.name)) > 0) > 0.4)
+                    -- Topic/keyword match in description (with higher threshold for multi-word searches)
+                    OR (array_length(search_words, 1) > 0
+                        AND EXISTS (
+                            SELECT
+                                1
+                            FROM
+                                unnest(search_words) word
+                            WHERE
+                                position(word IN lower(c.description)) > 0)
+                            AND (
+                                SELECT
+                                    CAST(count(*) AS float) / array_length(search_words, 1)
+                                FROM
+                                    unnest(search_words) word
+                                WHERE
+                                    position(word IN lower(c.description)) > 0) > CASE WHEN array_length(search_words, 1) > 1 THEN
+                                    0.5
+                                ELSE
+                                    0.3
+                                END))
+                SELECT
+                    rc.id,
+                    rc.code,
+                    rc.name,
+                    rc.description,
+                    rc.url,
+                    rc.academic_year,
+                    rc.custom_requisite,
+                    rc.prerequisite,
+                    rc.corequisite,
+                    rc.antirequisite,
+                    rc.weekly_contact,
+                    rc.gpa_weight,
+                    rc.course_count,
+                    rc.billing_units
+                FROM ( SELECT DISTINCT ON (code)
+                        *
+                    FROM
+                        ranked_courses
+                    WHERE
+                        search_rank > 0
+                    ORDER BY
+                        code,
+                        search_rank DESC,
+                        academic_year DESC) rc
+            ORDER BY
+                rc.search_rank DESC,
+                rc.code
+            LIMIT 20;
 END;
 $$;
 
