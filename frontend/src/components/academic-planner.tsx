@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { SortableCourseCard } from "@/components/course-card";
 import { Leaf, Snowflake, Sun } from "lucide-react";
-import { useContext, useRef, useEffect, useState } from "react";
+import { useContext, useRef, useEffect, useState, useCallback } from "react";
 import { SpringSummerContext } from "@/contexts";
 
 import {
@@ -273,6 +273,40 @@ export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 		}
 	}, [academicYearKeys, currentYearIndex]);
 
+	// Function to scroll to a specific academic year
+	const scrollToYear = useCallback((year: number) => {
+		if (containerRef.current) {
+			// Find the first semester column of the academic year
+			const firstSemesterColumn = containerRef.current.querySelector(
+				`[data-first-semester="true"][data-academic-year="${year}"]`,
+			);
+
+			if (firstSemesterColumn) {
+				// Get the container's padding-left
+				const containerStyle = window.getComputedStyle(containerRef.current);
+				const containerPaddingLeft =
+					Number.parseInt(containerStyle.paddingLeft, 10) || 0;
+
+				// Calculate the element's position relative to the container's content area
+				const columnRect = (
+					firstSemesterColumn as HTMLElement
+				).getBoundingClientRect();
+				const containerRect = containerRef.current.getBoundingClientRect();
+				const relativeLeft =
+					columnRect.left - containerRect.left - containerPaddingLeft;
+
+				// Add a left offset to account for additional spacing (adjust this value as needed)
+				const leftOffset = 24; // 24px offset to the left
+
+				// Scroll to the calculated position with the offset
+				containerRef.current.scrollTo({
+					left: containerRef.current.scrollLeft + relativeLeft - leftOffset,
+					behavior: "smooth",
+				});
+			}
+		}
+	}, []);
+
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			// Only handle if not in an input field
@@ -300,45 +334,21 @@ export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 			}
 		};
 
-		const scrollToYear = (year: number) => {
-			if (containerRef.current) {
-				// Find the first semester column of the academic year
-				const firstSemesterColumn = containerRef.current.querySelector(
-					`[data-first-semester="true"][data-academic-year="${year}"]`,
-				);
-
-				if (firstSemesterColumn) {
-					// Get the container's padding-left
-					const containerStyle = window.getComputedStyle(containerRef.current);
-					const containerPaddingLeft =
-						Number.parseInt(containerStyle.paddingLeft, 10) || 0;
-
-					// Calculate the element's position relative to the container's content area
-					const columnRect = (
-						firstSemesterColumn as HTMLElement
-					).getBoundingClientRect();
-					const containerRect = containerRef.current.getBoundingClientRect();
-					const relativeLeft =
-						columnRect.left - containerRect.left - containerPaddingLeft;
-
-					// Add a left offset to account for additional spacing (adjust this value as needed)
-					const leftOffset = 24; // 24px offset to the left
-
-					// Scroll to the calculated position with the offset
-					containerRef.current.scrollTo({
-						left: containerRef.current.scrollLeft + relativeLeft - leftOffset,
-						behavior: "smooth",
-					});
-				}
-			}
-		};
-
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [academicYearKeys]);
+	}, [academicYearKeys, scrollToYear]);
+
+	// Function to handle clicking on a year indicator
+	const handleYearIndicatorClick = useCallback(
+		(yearIndex: number) => {
+			setCurrentYearIndex(yearIndex);
+			scrollToYear(academicYearKeys[yearIndex]);
+		},
+		[academicYearKeys, scrollToYear],
+	);
 
 	return (
-		<div className="h-full">
+		<div className="h-full flex flex-col">
 			<div className="h-full overflow-x-auto" ref={containerRef}>
 				<div className="flex gap-16 p-6 min-w-min h-full">
 					{Object.entries(academicYears).map(
@@ -357,6 +367,49 @@ export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 							</div>
 						),
 					)}
+				</div>
+			</div>
+
+			{/* Year indicator bar */}
+			<div className="flex flex-col items-center py-2 border-t">
+				{/* Current year indicator */}
+				<div className="mb-2 text-sm font-medium">
+					{academicYearKeys.length > 0 &&
+					currentYearIndex >= 0 &&
+					currentYearIndex < academicYearKeys.length
+						? `${academicYearKeys[currentYearIndex]}-${academicYearKeys[currentYearIndex] + 1}`
+						: ""}
+				</div>
+
+				<div className="flex gap-1 items-center">
+					{/* First year label */}
+					<span className="text-xs text-muted-foreground mr-2">
+						{academicYearKeys.length > 0
+							? `${academicYearKeys[0]}-${academicYearKeys[0] + 1}`
+							: ""}
+					</span>
+
+					{academicYearKeys.map((year, index) => (
+						<button
+							type="button"
+							key={year}
+							onClick={() => handleYearIndicatorClick(index)}
+							className={`h-2 rounded-full transition-all ${
+								index === currentYearIndex
+									? "w-8 bg-primary"
+									: "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+							}`}
+							title={`${year}-${year + 1}`}
+							aria-label={`Go to academic year ${year}-${year + 1}`}
+						/>
+					))}
+
+					{/* Last year label */}
+					<span className="text-xs text-muted-foreground ml-2">
+						{academicYearKeys.length > 0
+							? `${academicYearKeys[academicYearKeys.length - 1]}-${academicYearKeys[academicYearKeys.length - 1] + 1}`
+							: ""}
+					</span>
 				</div>
 			</div>
 		</div>
