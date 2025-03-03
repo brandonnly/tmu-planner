@@ -13,13 +13,8 @@ import {
 import { supabase } from "@/lib/supabase";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { User } from "@supabase/supabase-js";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { LogOut, Menu, Trash2, X } from "lucide-react";
+
+import { Menu, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { getCachedImage, revokeObjectURL } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -677,10 +672,23 @@ function Index() {
 
 				// Check if the semester exists
 				if (newSemesterCourses[semesterId]) {
+					// Find the course before removing it
+					const courseToDelete = newSemesterCourses[semesterId].find(
+						(course) => course.id === courseId,
+					);
+
 					// Remove the course from the semester
 					newSemesterCourses[semesterId] = newSemesterCourses[
 						semesterId
 					].filter((course) => course.id !== courseId);
+
+					// Show toast notification if we found the course
+					if (courseToDelete) {
+						toast.success("Course Removed", {
+							description: `${courseToDelete.courseCode}: ${courseToDelete.courseName} has been removed from your plan.`,
+							duration: 3000,
+						});
+					}
 				}
 
 				return newSemesterCourses;

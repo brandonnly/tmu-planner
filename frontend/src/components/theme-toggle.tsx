@@ -1,4 +1,12 @@
-import { Moon, Sun, SunMoon, LogOut, Settings, Check } from "lucide-react";
+import {
+	Moon,
+	Sun,
+	SunMoon,
+	LogOut,
+	Settings,
+	Check,
+	Database,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -15,12 +23,23 @@ import { useTheme } from "@/components/theme-provider";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { SpringSummerContext } from "@/contexts";
+import { Input } from "@/components/ui/input";
 
 export function ThemeToggle() {
 	const { theme, setTheme } = useTheme();
 	const { hideSpring, setHideSpring } = useContext(SpringSummerContext);
+	const [supabaseUrl, setSupabaseUrl] = useState(
+		localStorage.getItem("devtools_supabase_url") || "",
+	);
+	const [supabaseKey, setSupabaseKey] = useState(
+		localStorage.getItem("devtools_supabase_key") || "",
+	);
+
+	// Get current environment values for placeholders
+	const currentSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+	const currentSupabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 	const handleSignOut = async () => {
 		const { error } = await supabase.auth.signOut();
@@ -30,6 +49,18 @@ export function ThemeToggle() {
 		} else {
 			toast.success("Signed out successfully");
 		}
+	};
+
+	const handleSaveSupabaseConfig = () => {
+		// Save to localStorage
+		localStorage.setItem("devtools_supabase_url", supabaseUrl);
+		localStorage.setItem("devtools_supabase_key", supabaseKey);
+
+		// Show success message
+		toast.success("Supabase configuration saved", {
+			description:
+				"Please refresh the page for the changes to take effect. Note that this is for development purposes only.",
+		});
 	};
 
 	const themeIcons = {
@@ -103,6 +134,60 @@ export function ThemeToggle() {
 					</div>
 					{hideSpring && <Check className="h-4 w-4 text-primary" />}
 				</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuSub>
+					<DropdownMenuSubTrigger className="flex w-full items-center justify-between">
+						<div className="flex items-center gap-2">
+							<Database className="h-4 w-4" />
+							<span>DevTools</span>
+						</div>
+					</DropdownMenuSubTrigger>
+					<DropdownMenuPortal>
+						<DropdownMenuSubContent className="w-[300px]">
+							<div className="p-2 space-y-2">
+								<div className="space-y-1">
+									<label
+										htmlFor="supabase-url"
+										className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+									>
+										Supabase URL
+									</label>
+									<Input
+										id="supabase-url"
+										value={supabaseUrl}
+										onChange={(e) => setSupabaseUrl(e.target.value)}
+										placeholder={
+											currentSupabaseUrl || "https://your-project.supabase.co"
+										}
+										className="h-8 text-xs"
+									/>
+								</div>
+								<div className="space-y-1">
+									<label
+										htmlFor="supabase-key"
+										className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+									>
+										Supabase Anon Key
+									</label>
+									<Input
+										id="supabase-key"
+										value={supabaseKey}
+										onChange={(e) => setSupabaseKey(e.target.value)}
+										placeholder={currentSupabaseKey || "your-anon-key"}
+										type="password"
+										className="h-8 text-xs"
+									/>
+								</div>
+								<DropdownMenuItem
+									className="w-full justify-center cursor-pointer"
+									onClick={handleSaveSupabaseConfig}
+								>
+									Save Supabase Config
+								</DropdownMenuItem>
+							</div>
+						</DropdownMenuSubContent>
+					</DropdownMenuPortal>
+				</DropdownMenuSub>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					onClick={handleSignOut}
