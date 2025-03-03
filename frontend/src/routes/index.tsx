@@ -640,12 +640,16 @@ function Index() {
 								<div
 									className={`
 										border-r bg-background
-										transition-all duration-300
+										transition-all duration-300 overflow-hidden
 										${sidebarOpen ? "w-[320px] flex-none" : "w-0"}
 									`}
 								>
 									<div
-										className={`${sidebarOpen ? "w-[320px] flex-none" : "w-0"} h-full`}
+										className={`
+											h-full w-[320px] flex-none
+											transition-transform duration-300
+											${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+										`}
 									>
 										<CourseSidebar
 											courses={courses}
@@ -656,7 +660,7 @@ function Index() {
 									</div>
 								</div>
 								<div className="flex-1 flex flex-col min-w-0">
-									<div className="flex gap-4 text-xl border-b p-4 items-center">
+									<div className="flex gap-4 items-center border-b h-[69px] px-4">
 										<div className="font-bold text-xl flex items-center gap-3">
 											<Button
 												variant="ghost"
