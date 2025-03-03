@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { SortableCourseCard } from "@/components/course-card";
 import { Leaf, Snowflake, Sun } from "lucide-react";
-import { useContext } from "react";
+import { useContext, useRef, useEffect, useState } from "react";
 import { SpringSummerContext } from "@/contexts";
 
 import {
@@ -107,9 +107,17 @@ interface SemesterColumnProps {
 	year: number;
 	id: string;
 	courses: Course[];
+	"data-first-semester"?: string;
+	"data-academic-year"?: number;
 }
 
-function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
+function SemesterColumn({
+	term,
+	year,
+	id,
+	courses,
+	...props
+}: SemesterColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
 		id: id,
 		data: {
@@ -138,6 +146,7 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
 				isOver ? "bg-muted/50" : ""
 			}`}
 			data-droppable="semester-column"
+			{...props}
 		>
 			<div className="h-full flex flex-col">
 				<h3 className="font-semibold mb-4 text-center flex items-center justify-center gap-2">
@@ -188,15 +197,17 @@ function AcademicYear({
 
 	return (
 		<div className="h-full flex flex-col">
-			<h2 className="text-lg font-bold mb-2">{`${startYear}-${startYear + 1}`}</h2>
+			<h2 className="text-lg font-bold mb-2 transition-colors [div[aria-current=true]_&]:text-primary">{`${startYear}-${startYear + 1}`}</h2>
 			<div className="flex gap-2 flex-1 min-h-0">
-				{visibleSemesters.map((semester) => (
+				{visibleSemesters.map((semester, index) => (
 					<SemesterColumn
 						key={semester.id}
 						term={semester.term}
 						year={semester.year}
 						id={semester.id}
 						courses={semesterCourses[semester.id] || []}
+						data-first-semester={index === 0 ? "true" : "false"}
+						data-academic-year={startYear}
 					/>
 				))}
 			</div>
@@ -215,20 +226,137 @@ export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 	// Generate semesters starting from Fall 2021
 	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
 	const academicYears = groupSemestersByAcademicYear(semesters);
+	const academicYearKeys = Object.keys(academicYears).map(Number);
+	const [currentYearIndex, setCurrentYearIndex] = useState(0);
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	// Update current year index based on scroll position
+	useEffect(() => {
+		const updateCurrentYearOnScroll = () => {
+			if (!containerRef.current) return;
+
+			const containerRect = containerRef.current.getBoundingClientRect();
+			const containerLeft = containerRect.left;
+			const containerWidth = containerRect.width;
+			const centerX = containerLeft + containerWidth / 2;
+
+			// Find which academic year is most visible in the viewport
+			let closestYear = academicYearKeys[0];
+			let closestDistance = Number.POSITIVE_INFINITY;
+
+			academicYearKeys.forEach((year, index) => {
+				const yearElement = document.getElementById(`academic-year-${year}`);
+				if (yearElement) {
+					const yearRect = yearElement.getBoundingClientRect();
+					const yearCenterX = yearRect.left + yearRect.width / 2;
+					const distance = Math.abs(centerX - yearCenterX);
+
+					if (distance < closestDistance) {
+						closestDistance = distance;
+						closestYear = year;
+					}
+				}
+			});
+
+			// Update current year index
+			const newIndex = academicYearKeys.indexOf(closestYear);
+			if (newIndex !== -1 && newIndex !== currentYearIndex) {
+				setCurrentYearIndex(newIndex);
+			}
+		};
+
+		const container = containerRef.current;
+		if (container) {
+			container.addEventListener("scroll", updateCurrentYearOnScroll);
+			return () =>
+				container.removeEventListener("scroll", updateCurrentYearOnScroll);
+		}
+	}, [academicYearKeys, currentYearIndex]);
+
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// Only handle if not in an input field
+			if (
+				e.target instanceof HTMLInputElement ||
+				e.target instanceof HTMLTextAreaElement
+			) {
+				return;
+			}
+
+			if (e.key === "ArrowLeft") {
+				e.preventDefault();
+				setCurrentYearIndex((prev) => {
+					const newIndex = Math.max(0, prev - 1);
+					scrollToYear(academicYearKeys[newIndex]);
+					return newIndex;
+				});
+			} else if (e.key === "ArrowRight") {
+				e.preventDefault();
+				setCurrentYearIndex((prev) => {
+					const newIndex = Math.min(academicYearKeys.length - 1, prev + 1);
+					scrollToYear(academicYearKeys[newIndex]);
+					return newIndex;
+				});
+			}
+		};
+
+		const scrollToYear = (year: number) => {
+			if (containerRef.current) {
+				// Find the first semester column of the academic year
+				const firstSemesterColumn = containerRef.current.querySelector(
+					`[data-first-semester="true"][data-academic-year="${year}"]`,
+				);
+
+				if (firstSemesterColumn) {
+					// Get the container's padding-left
+					const containerStyle = window.getComputedStyle(containerRef.current);
+					const containerPaddingLeft =
+						Number.parseInt(containerStyle.paddingLeft, 10) || 0;
+
+					// Calculate the element's position relative to the container's content area
+					const columnRect = (
+						firstSemesterColumn as HTMLElement
+					).getBoundingClientRect();
+					const containerRect = containerRef.current.getBoundingClientRect();
+					const relativeLeft =
+						columnRect.left - containerRect.left - containerPaddingLeft;
+
+					// Add a left offset to account for additional spacing (adjust this value as needed)
+					const leftOffset = 24; // 24px offset to the left
+
+					// Scroll to the calculated position with the offset
+					containerRef.current.scrollTo({
+						left: containerRef.current.scrollLeft + relativeLeft - leftOffset,
+						behavior: "smooth",
+					});
+				}
+			}
+		};
+
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [academicYearKeys]);
 
 	return (
 		<div className="h-full">
-			<div className="h-full overflow-x-auto">
+			<div className="h-full overflow-x-auto" ref={containerRef}>
 				<div className="flex gap-16 p-6 min-w-min h-full">
-					{Object.entries(academicYears).map(([startYear, yearSemesters]) => (
-						<div key={startYear} className="h-full">
-							<AcademicYear
-								startYear={Number.parseInt(startYear)}
-								semesters={yearSemesters}
-								semesterCourses={semesterCourses}
-							/>
-						</div>
-					))}
+					{Object.entries(academicYears).map(
+						([startYear, yearSemesters], index) => (
+							<div
+								key={startYear}
+								className="h-full"
+								id={`academic-year-${startYear}`}
+								aria-current={index === currentYearIndex ? "true" : "false"}
+							>
+								<AcademicYear
+									startYear={Number.parseInt(startYear)}
+									semesters={yearSemesters}
+									semesterCourses={semesterCourses}
+								/>
+							</div>
+						),
+					)}
 				</div>
 			</div>
 		</div>
