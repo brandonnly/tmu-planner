@@ -2,7 +2,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AcademicPlanner } from "@/components/academic-planner";
 
 import { Button } from "@/components/ui/button";
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import {
+	useEffect,
+	useState,
+	useMemo,
+	useCallback,
+	useRef,
+	useContext,
+} from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { User } from "@supabase/supabase-js";
@@ -12,7 +19,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { getCachedImage, revokeObjectURL } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -148,17 +155,39 @@ function CourseSidebar({
 	courses,
 	searchResults,
 	setSearchResults,
+	activeCourse,
 }: {
 	courses: Course[];
 	searchResults: Course[];
 	setSearchResults: React.Dispatch<React.SetStateAction<Course[]>>;
+	activeCourse: (Course & { isFromSidebar?: boolean }) | null;
 }) {
 	const [search, setSearch] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const { setNodeRef, isOver } = useDroppable({
 		id: "sidebar",
+		data: {
+			type: "trash-zone",
+			accepts: ["course-card"],
+		},
 	});
 	const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
+	const { semesterCourses } = useContext(SemesterContext);
+
+	// Track if we're dragging from a semester
+	const [showTrashIndicator, setShowTrashIndicator] = useState(false);
+
+	// Update when drag state or active course changes
+	useEffect(() => {
+		// If not hovering or no active course, don't show the trash indicator
+		if (!isOver || !activeCourse) {
+			setShowTrashIndicator(false);
+			return;
+		}
+
+		// Only show trash indicator if the course is being dragged from a semester (not from sidebar)
+		setShowTrashIndicator(activeCourse.isFromSidebar === false);
+	}, [isOver, activeCourse]);
 
 	const performSearch = useCallback(
 		async (value: string) => {
@@ -243,7 +272,7 @@ function CourseSidebar({
 
 	return (
 		<div ref={setNodeRef} className="h-full flex flex-col">
-			<div className="p-4">
+			<div className="p-4 border-b">
 				<Input
 					placeholder="Search courses..."
 					value={search}
@@ -251,37 +280,48 @@ function CourseSidebar({
 					className="w-full"
 				/>
 			</div>
-			<div
-				className={`flex-1 overflow-y-auto overflow-x-hidden p-4 transition-colors 
-					[&::-webkit-scrollbar-horizontal]:hidden 
-					[scrollbar-width:thin] 
-					[scrollbar-gutter:stable]
-					[&::-webkit-scrollbar]:w-2 
-					[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 
-					hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25
-					${isOver ? "bg-muted/50" : ""}`}
-			>
-				<div className="space-y-2 w-full">
-					{isLoading
-						? skeletonItems.map((item) => (
-								<div
-									key={item.id}
-									className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative w-full"
-								>
-									<div className="space-y-1">
-										<div className="h-5 w-24 bg-muted animate-pulse rounded" />
-										<div className="h-4 w-48 bg-muted animate-pulse rounded" />
+			<div className="flex-1 min-h-0 relative">
+				{/* Trash overlay - only shown when dragging from planner and hovering over sidebar content */}
+				{showTrashIndicator && (
+					<div className="absolute inset-0 bg-gradient-to-br from-red-500/20 to-red-600/30 flex flex-col items-center justify-center z-10 pointer-events-none backdrop-blur-[1px] transition-all duration-200 ease-in-out">
+						<Trash2 className="h-16 w-16 text-red-500 drop-shadow-md animate-pulse" />
+						<span className="mt-2 text-red-600 font-medium text-sm">
+							Drop to Remove
+						</span>
+					</div>
+				)}
+				<div
+					className={`h-full overflow-y-auto overflow-x-hidden p-4 transition-all duration-200
+						[&::-webkit-scrollbar-horizontal]:hidden 
+						[scrollbar-width:thin] 
+						[scrollbar-gutter:stable]
+						[&::-webkit-scrollbar]:w-2 
+						[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 
+						hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25
+						${showTrashIndicator ? "bg-red-500/5" : isOver ? "bg-muted/20" : ""}`}
+				>
+					<div className="space-y-2 w-full">
+						{isLoading
+							? skeletonItems.map((item) => (
+									<div
+										key={item.id}
+										className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative w-full"
+									>
+										<div className="space-y-1">
+											<div className="h-5 w-24 bg-muted animate-pulse rounded" />
+											<div className="h-4 w-48 bg-muted animate-pulse rounded" />
+										</div>
 									</div>
-								</div>
-							))
-						: displayedCourses.map((course) => (
-								<DraggableCourseCard
-									key={course.id}
-									id={course.id}
-									courseCode={course.courseCode}
-									courseName={course.courseName}
-								/>
-							))}
+								))
+							: displayedCourses.map((course) => (
+									<DraggableCourseCard
+										key={course.id}
+										id={course.id}
+										courseCode={course.courseCode}
+										courseName={course.courseName}
+									/>
+								))}
+					</div>
 				</div>
 			</div>
 			<div className="p-4 border-t">
@@ -304,7 +344,9 @@ function CourseSidebar({
 
 function Index() {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
-	const [activeCourse, setActiveCourse] = useState<Course | null>(null);
+	const [activeCourse, setActiveCourse] = useState<
+		(Course & { isFromSidebar?: boolean }) | null
+	>(null);
 	const [courses] = useState<Course[]>([]);
 	const [searchResults, setSearchResults] = useState<Course[]>([]);
 	const [semesterCourses, setSemesterCourses] = useState<
@@ -572,6 +614,7 @@ function Index() {
 											courses={courses}
 											searchResults={searchResults}
 											setSearchResults={setSearchResults}
+											activeCourse={activeCourse}
 										/>
 									</div>
 								</div>
