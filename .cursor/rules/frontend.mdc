@@ -1,6 +1,7 @@
 ---
 description: Frontend Overview
 globs: frontend/*
+alwaysApply: false
 ---
 # Frontend Development Rules
 
@@ -98,3 +99,6 @@ frontend/
 - Production build optimization
 - Error tracking and monitoring
 - Performance metrics tracking
+
+## Command Line
+- When installing new packages or running node commands where'd you usuall use `npm`, or `npx`. Use `bun` and `bunx` insteadd.
