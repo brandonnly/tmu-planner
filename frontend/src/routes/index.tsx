@@ -274,7 +274,7 @@ function CourseSidebar({
 		<div ref={setNodeRef} className="h-full flex flex-col">
 			<div className="p-4 border-b">
 				<Input
-					placeholder="Search courses..."
+					placeholder="Search for course..."
 					value={search}
 					onChange={handleSearchChange}
 					className="w-full"
@@ -301,26 +301,63 @@ function CourseSidebar({
 						${showTrashIndicator ? "bg-red-500/5" : isOver ? "bg-muted/20" : ""}`}
 				>
 					<div className="space-y-2 w-full">
-						{isLoading
-							? skeletonItems.map((item) => (
-									<div
-										key={item.id}
-										className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative w-full"
-									>
-										<div className="space-y-1">
-											<div className="h-5 w-24 bg-muted animate-pulse rounded" />
-											<div className="h-4 w-48 bg-muted animate-pulse rounded" />
+						{isLoading ? (
+							skeletonItems.map((item) => (
+								<div
+									key={item.id}
+									className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative w-full"
+								>
+									<div className="space-y-1">
+										<div className="h-5 w-24 bg-muted animate-pulse rounded" />
+										<div className="h-4 w-48 bg-muted animate-pulse rounded" />
+									</div>
+								</div>
+							))
+						) : displayedCourses.length === 0 && !search.trim() ? (
+							<div className="space-y-6 py-8 text-center text-muted-foreground">
+								<div className="space-y-2">
+									<h3 className="text-lg font-medium text-foreground">
+										Search for Courses
+									</h3>
+									<p>Search by course code or name to get started</p>
+								</div>
+								<div className="space-y-6">
+									<div className="space-y-2">
+										<p className="font-medium text-sm">Example course codes:</p>
+										<div className="flex gap-2 justify-center flex-wrap">
+											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+												PLX333
+											</div>
+											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+												GCM750
+											</div>
+											<div className="bg-muted px-2 py-1 rounded text-sm font-medium">
+												CPS847
+											</div>
 										</div>
 									</div>
-								))
-							: displayedCourses.map((course) => (
-									<DraggableCourseCard
-										key={course.id}
-										id={course.id}
-										courseCode={course.courseCode}
-										courseName={course.courseName}
-									/>
-								))}
+									<div className="space-y-2">
+										<p className="font-medium text-sm">Example course names:</p>
+										<div className="space-y-2">
+											<p className="text-sm">Popular Culture</p>
+											<p className="text-sm">
+												Introductory American Sign Language I
+											</p>
+											<p className="text-sm">Alternative Energies</p>
+										</div>
+									</div>
+								</div>
+							</div>
+						) : (
+							displayedCourses.map((course) => (
+								<DraggableCourseCard
+									key={course.id}
+									id={course.id}
+									courseCode={course.courseCode}
+									courseName={course.courseName}
+								/>
+							))
+						)}
 					</div>
 				</div>
 			</div>
