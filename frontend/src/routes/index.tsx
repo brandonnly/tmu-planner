@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AcademicPlanner } from "@/components/academic-planner";
 
 import { Button } from "@/components/ui/button";
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { User } from "@supabase/supabase-js";
@@ -12,25 +12,35 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { getCachedImage, revokeObjectURL } from "@/lib/utils";
-import { Menu } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
 	DndContext,
-	useSensors,
-	useSensor,
-	PointerSensor,
 	DragOverlay,
+	PointerSensor,
+	KeyboardSensor,
+	useSensor,
+	useSensors,
+	pointerWithin,
+	rectIntersection,
 } from "@dnd-kit/core";
+import type { CollisionDetection } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import type { Course } from "@/types/course";
-import { CourseCard } from "@/components/course-card";
+import { CourseCard, DraggableCourseCard } from "@/components/course-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useDroppable } from "@dnd-kit/core";
 
 // Add 'type' keyword to type-only imports
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+import {
+	CourseContext,
+	DragContext,
+	SemesterContext,
+	SidebarContext,
+} from "@/contexts";
 
 export const Route = createFileRoute("/")({
 	component: Index,
@@ -134,17 +144,27 @@ function LoginButton() {
 	);
 }
 
-function CourseSidebar({ courses }: { courses: Course[] }) {
+function CourseSidebar({
+	courses,
+	searchResults,
+	setSearchResults,
+}: {
+	courses: Course[];
+	searchResults: Course[];
+	setSearchResults: React.Dispatch<React.SetStateAction<Course[]>>;
+}) {
 	const [search, setSearch] = useState("");
-	const [searchResults, setSearchResults] = useState<Course[]>([]);
 	const [isLoading, setIsLoading] = useState(false);
 	const { setNodeRef, isOver } = useDroppable({
 		id: "sidebar",
 	});
+	const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
 
-	useEffect(() => {
-		const searchCourses = async () => {
-			if (!search.trim()) {
+	const performSearch = useCallback(
+		async (value: string) => {
+			const trimmedSearch = value.trim();
+
+			if (!trimmedSearch) {
 				setSearchResults(courses);
 				return;
 			}
@@ -152,7 +172,7 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 			setIsLoading(true);
 			try {
 				const { data, error } = await supabase.rpc("search_courses", {
-					search_query: search.trim(),
+					search_query: trimmedSearch,
 				});
 
 				if (error) {
@@ -161,34 +181,65 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 					return;
 				}
 
-				if (!data) {
-					setSearchResults([]);
-					return;
-				}
+				const newResults = data
+					? data.map((course) => ({
+							id: course.id,
+							courseCode: course.code,
+							courseName: course.name,
+						}))
+					: [];
 
-				setSearchResults(
-					data.map((course) => ({
-						id: course.id,
-						courseCode: course.code,
-						courseName: course.name,
-					})),
-				);
+				setSearchResults(newResults);
 			} catch (error) {
 				console.error("Error searching courses:", error);
 				toast.error("Failed to search courses");
 			} finally {
 				setIsLoading(false);
 			}
+		},
+		[courses, setSearchResults],
+	);
+
+	const handleSearchChange = useCallback(
+		(e: React.ChangeEvent<HTMLInputElement>) => {
+			const value = e.target.value;
+			setSearch(value);
+
+			// Clear any existing timeout
+			if (searchTimeoutRef.current) {
+				clearTimeout(searchTimeoutRef.current);
+			}
+
+			// Clear results immediately if empty
+			if (!value.trim()) {
+				setSearchResults(courses);
+				return;
+			}
+
+			// Set new timeout
+			searchTimeoutRef.current = setTimeout(() => {
+				performSearch(value);
+			}, 300);
+		},
+		[courses, performSearch, setSearchResults],
+	);
+
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (searchTimeoutRef.current) {
+				clearTimeout(searchTimeoutRef.current);
+			}
 		};
+	}, []);
 
-		const debounceTimeout = setTimeout(searchCourses, 300);
-		return () => clearTimeout(debounceTimeout);
-	}, [search, courses]);
-
-	// Create a stable array of skeleton items to avoid key warnings
 	const skeletonItems = Array.from({ length: 3 }, (_, i) => ({
 		id: `loading-skeleton-${i}`,
 	}));
+
+	const displayedCourses = useMemo(() => {
+		return search.trim() ? searchResults : courses;
+	}, [search, searchResults, courses]);
 
 	return (
 		<div ref={setNodeRef} className="h-full flex flex-col">
@@ -196,20 +247,26 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 				<Input
 					placeholder="Search courses..."
 					value={search}
-					onChange={(e) => setSearch(e.target.value)}
+					onChange={handleSearchChange}
 					className="w-full"
 				/>
 			</div>
 			<div
-				className={`flex-1 overflow-y-auto p-4 transition-colors ${isOver ? "bg-muted/50" : ""}`}
+				className={`flex-1 overflow-y-auto overflow-x-hidden p-4 transition-colors 
+					[&::-webkit-scrollbar-horizontal]:hidden 
+					[scrollbar-width:thin] 
+					[scrollbar-gutter:stable]
+					[&::-webkit-scrollbar]:w-2 
+					[&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 
+					hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25
+					${isOver ? "bg-muted/50" : ""}`}
 			>
-				<div className="space-y-2">
+				<div className="space-y-2 w-full">
 					{isLoading
-						? // Show loading skeletons
-							skeletonItems.map((item) => (
+						? skeletonItems.map((item) => (
 								<div
 									key={item.id}
-									className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative"
+									className="bg-card text-card-foreground rounded-xl border shadow-sm p-4 relative w-full"
 								>
 									<div className="space-y-1">
 										<div className="h-5 w-24 bg-muted animate-pulse rounded" />
@@ -217,23 +274,14 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 									</div>
 								</div>
 							))
-						: search.trim()
-							? searchResults.map((course) => (
-									<CourseCard
-										key={course.id}
-										id={course.id}
-										courseCode={course.courseCode}
-										courseName={course.courseName}
-									/>
-								))
-							: courses.map((course) => (
-									<CourseCard
-										key={course.id}
-										id={course.id}
-										courseCode={course.courseCode}
-										courseName={course.courseName}
-									/>
-								))}
+						: displayedCourses.map((course) => (
+								<DraggableCourseCard
+									key={course.id}
+									id={course.id}
+									courseCode={course.courseCode}
+									courseName={course.courseName}
+								/>
+							))}
 				</div>
 			</div>
 			<div className="p-4 border-t">
@@ -254,60 +302,11 @@ function CourseSidebar({ courses }: { courses: Course[] }) {
 	);
 }
 
-// --- Context Definitions (Moved from __root.tsx) ---
-interface SidebarContextType {
-	isOpen: boolean;
-	setIsOpen: (open: boolean) => void;
-}
-
-export const SidebarContext = createContext<SidebarContextType>({
-	isOpen: false,
-	setIsOpen: () => {},
-});
-
-export const useSidebar = () => useContext(SidebarContext);
-
-interface DragContextType {
-	handleDragStart: (event: DragStartEvent) => void;
-	handleDragEnd: (event: DragEndEvent) => void;
-}
-
-export const DragContext = createContext<DragContextType>({
-	handleDragStart: () => {},
-	handleDragEnd: () => {},
-});
-export const useDrag = () => useContext(DragContext); // Added useDrag
-
-interface SemesterContextType {
-	semesterCourses: Record<string, Course[]>;
-	setSemesterCourses: React.Dispatch<
-		React.SetStateAction<Record<string, Course[]>>
-	>;
-}
-
-export const SemesterContext = createContext<SemesterContextType>({
-	semesterCourses: {},
-	setSemesterCourses: () => {},
-});
-export const useSemesters = () => useContext(SemesterContext); // Added useSemesters
-
-interface CourseContextType {
-	courses: Course[];
-	setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
-}
-
-export const CourseContext = createContext<CourseContextType>({
-	courses: [],
-	setCourses: () => {},
-});
-export const useCourses = () => useContext(CourseContext); // Added useCourses
-
-// --- End Context Definitions ---
-
 function Index() {
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [activeCourse, setActiveCourse] = useState<Course | null>(null);
 	const [courses] = useState<Course[]>([]);
+	const [searchResults, setSearchResults] = useState<Course[]>([]);
 	const [semesterCourses, setSemesterCourses] = useState<
 		Record<string, Course[]>
 	>({});
@@ -318,71 +317,232 @@ function Index() {
 				distance: 8,
 			},
 		}),
+		useSensor(KeyboardSensor, {
+			coordinateGetter: sortableKeyboardCoordinates,
+		}),
 	);
 
-	const handleDragStart = (event: DragStartEvent) => {
-		const course = courses.find((c) => c.id === event.active.id);
-		if (course) {
-			setActiveCourse(course);
-		}
-	};
+	const handleDragStart = useCallback(
+		(event: DragStartEvent) => {
+			const { active } = event;
 
-	const handleDragEnd = (event: DragEndEvent) => {
-		const { active, over } = event;
+			// Try to find the course in any semester first
+			const isFromSidebar = (() => {
+				// Check if the course is in the sidebar (main courses or search results)
+				const sidebarCourse =
+					courses.find((c) => c.id === active.id) ||
+					(searchResults.length > 0
+						? searchResults.find((c) => c.id === active.id)
+						: undefined);
 
-		if (over && active.id !== over.id) {
-			const course = courses.find((c) => c.id === active.id);
-			if (!course) return;
+				if (sidebarCourse) {
+					setActiveCourse({ ...sidebarCourse, isFromSidebar: true });
+					return true;
+				}
 
-			setSemesterCourses((prev) => {
-				// Find which semester currently has the course
-				let sourceSemester = "";
-				for (const [semester, courses] of Object.entries(prev)) {
-					if (courses.some((c) => c.id === active.id)) {
-						sourceSemester = semester;
-						break;
+				// If not in sidebar, check semesters
+				for (const courses of Object.values(semesterCourses)) {
+					const semesterCourse = courses.find((c) => c.id === active.id);
+					if (semesterCourse) {
+						setActiveCourse({ ...semesterCourse, isFromSidebar: false });
+						return false;
+					}
+				}
+				return false;
+			})();
+		},
+		[courses, searchResults, semesterCourses],
+	);
+
+	const handleDragEnd = useCallback(
+		(event: DragEndEvent) => {
+			const { active, over } = event;
+
+			if (!over || !activeCourse) {
+				setActiveCourse(null);
+				return;
+			}
+
+			// Determine the semester ID by checking the data type
+			const overId = over.id;
+			const overData = over.data.current;
+
+			// Check if we're dropping onto a semester column or a course
+			const targetSemesterId = (() => {
+				// If directly dropping on a semester column, use its ID
+				if (overData?.type === "semester-column") {
+					return overId as string;
+				}
+
+				// If dropping on a course card, find its semester
+				for (const [semesterId, courses] of Object.entries(semesterCourses)) {
+					if (courses.some((c) => c.id === overId)) {
+						return semesterId;
 					}
 				}
 
-				// Create new state with all existing courses
+				// Default case - sidebar or invalid target
+				return null;
+			})();
+
+			// If dropping to sidebar, handle that case
+			if (overId === "sidebar" && !activeCourse.isFromSidebar) {
+				// Find source semester
+				const sourceSemesterId = (() => {
+					for (const [semester, courses] of Object.entries(semesterCourses)) {
+						if (courses.some((c) => c.id === active.id)) {
+							return semester;
+						}
+					}
+					return null;
+				})();
+
+				if (sourceSemesterId) {
+					setSemesterCourses((prev) => ({
+						...prev,
+						[sourceSemesterId]: prev[sourceSemesterId].filter(
+							(c) => c.id !== active.id,
+						),
+					}));
+				}
+				setActiveCourse(null);
+				return;
+			}
+
+			// If we didn't find a valid target semester, do nothing
+			if (!targetSemesterId) {
+				setActiveCourse(null);
+				return;
+			}
+
+			setSemesterCourses((prev) => {
 				const newSemesterCourses = { ...prev };
 
-				// Remove course from source semester if found
-				if (sourceSemester) {
-					newSemesterCourses[sourceSemester] = prev[sourceSemester].filter(
+				// Find source semester
+				const sourceSemesterId = (() => {
+					if (activeCourse.isFromSidebar) return null;
+
+					for (const [semesterId, courses] of Object.entries(prev)) {
+						if (courses.some((c) => c.id === active.id)) {
+							return semesterId;
+						}
+					}
+					return null;
+				})();
+
+				// If dragging between semesters, remove from source
+				if (sourceSemesterId && !activeCourse.isFromSidebar) {
+					newSemesterCourses[sourceSemesterId] = prev[sourceSemesterId].filter(
 						(c) => c.id !== active.id,
 					);
 				}
 
-				// If dropping to sidebar, just remove from semester
-				if (over.id === "sidebar") {
-					return newSemesterCourses;
+				// Initialize target semester if it doesn't exist
+				if (!(targetSemesterId in newSemesterCourses)) {
+					newSemesterCourses[targetSemesterId] = [];
 				}
 
-				// Add course to target semester
-				const targetSemester = over.id as string;
-				newSemesterCourses[targetSemester] = [
-					...(newSemesterCourses[targetSemester] || []),
-					course,
-				];
+				// If source and target are the same, handle reordering
+				if (
+					sourceSemesterId === targetSemesterId &&
+					!activeCourse.isFromSidebar
+				) {
+					const oldIndex = prev[targetSemesterId].findIndex(
+						(c) => c.id === active.id,
+					);
+
+					// If dropping on a course, find its position
+					const newIndex = (() => {
+						const overIndex = prev[targetSemesterId].findIndex(
+							(c) => c.id === overId,
+						);
+
+						// If dropping directly on a course
+						if (overIndex !== -1) {
+							// Insert after the course we dropped on
+							return overIndex < oldIndex ? overIndex : overIndex;
+						}
+
+						// If dropping on the semester itself, add to the end
+						return prev[targetSemesterId].length - 1;
+					})();
+
+					if (oldIndex !== -1 && newIndex !== -1) {
+						newSemesterCourses[targetSemesterId] = arrayMove(
+							prev[targetSemesterId],
+							oldIndex,
+							Math.min(newIndex, prev[targetSemesterId].length - 1),
+						);
+						return newSemesterCourses;
+					}
+				}
+
+				// Create a new course object with a unique ID if coming from sidebar
+				const courseToAdd = activeCourse.isFromSidebar
+					? {
+							...activeCourse,
+							id: `${activeCourse.courseCode}-${Date.now()}`,
+						}
+					: activeCourse;
+
+				// Handle dropping onto a different semester
+				// If dropping onto a course, find its position
+				const overIndex = newSemesterCourses[targetSemesterId].findIndex(
+					(c) => c.id === overId,
+				);
+
+				if (overIndex !== -1) {
+					// If dropping onto a course, insert after it
+					newSemesterCourses[targetSemesterId].splice(
+						overIndex + 1,
+						0,
+						courseToAdd,
+					);
+				} else {
+					// If dropping directly on the semester, add to the end
+					newSemesterCourses[targetSemesterId].push(courseToAdd);
+				}
 
 				return newSemesterCourses;
 			});
-		}
-		setActiveCourse(null);
-	};
+
+			setActiveCourse(null);
+		},
+		[activeCourse, semesterCourses],
+	);
 
 	// Get all courses that are in semesters
-	const coursesInSemesters = new Set(
-		Object.values(semesterCourses)
-			.flat()
-			.map((course) => course.id),
+	const coursesInSemesters = useMemo(
+		() =>
+			new Set(
+				Object.values(semesterCourses)
+					.flat()
+					.map((course) => course.id),
+			),
+		[semesterCourses],
 	);
 
-	// Filter out courses that are already in semesters for the sidebar
-	const availableCourses = courses.filter(
-		(course) => !coursesInSemesters.has(course.id),
-	);
+	// Custom collision detection that prioritizes semester columns
+	const customCollisionDetection: CollisionDetection = useCallback((args) => {
+		// First, find all intersecting droppable areas
+		const pointerCollisions = pointerWithin(args);
+
+		// Check for semester column collisions first
+		const semesterCollisions = pointerCollisions.filter(
+			(collision) =>
+				collision.data?.droppable?.data?.type === "semester-column",
+		);
+
+		// If we found semester columns, prioritize them
+		if (semesterCollisions.length > 0) {
+			return semesterCollisions;
+		}
+
+		// Otherwise, use the standard collisions
+		return pointerCollisions.length > 0
+			? pointerCollisions
+			: rectIntersection(args);
+	}, []);
 
 	return (
 		<CourseContext.Provider value={{ courses, setCourses: () => {} }}>
@@ -393,6 +553,7 @@ function Index() {
 					<DragContext.Provider value={{ handleDragStart, handleDragEnd }}>
 						<DndContext
 							sensors={sensors}
+							collisionDetection={customCollisionDetection}
 							onDragStart={handleDragStart}
 							onDragEnd={handleDragEnd}
 						>
@@ -401,13 +562,17 @@ function Index() {
 									className={`
 										border-r bg-background
 										transition-all duration-300
-										${sidebarOpen ? "w-[320px] min-w-[320px]" : "w-0 min-w-0"}
+										${sidebarOpen ? "w-[320px] flex-none" : "w-0"}
 									`}
 								>
 									<div
-										className={`${sidebarOpen ? "w-[320px]" : "w-0"} h-full overflow-hidden`}
+										className={`${sidebarOpen ? "w-[320px] flex-none" : "w-0"} h-full`}
 									>
-										<CourseSidebar courses={availableCourses} />
+										<CourseSidebar
+											courses={courses}
+											searchResults={searchResults}
+											setSearchResults={setSearchResults}
+										/>
 									</div>
 								</div>
 								<div className="flex-1 flex flex-col min-w-0">
@@ -445,13 +610,11 @@ function Index() {
 							</div>
 							<DragOverlay>
 								{activeCourse ? (
-									<div className="transform-none">
-										<CourseCard
-											id={activeCourse.id}
-											courseCode={activeCourse.courseCode}
-											courseName={activeCourse.courseName}
-										/>
-									</div>
+									<CourseCard
+										id={activeCourse.id}
+										courseCode={activeCourse.courseCode}
+										courseName={activeCourse.courseName}
+									/>
 								) : null}
 							</DragOverlay>
 						</DndContext>

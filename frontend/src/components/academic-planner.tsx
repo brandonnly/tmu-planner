@@ -1,10 +1,13 @@
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
-import { CourseCard } from "@/components/course-card";
-import { useState } from "react";
+import { SortableCourseCard } from "@/components/course-card";
+
 import { Leaf, Snowflake, Sun } from "lucide-react";
-import { Input } from "@/components/ui/input";
+
+import {
+	SortableContext,
+	verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 type Term = "Fall" | "Winter" | "Spring/Summer";
 
@@ -108,6 +111,10 @@ interface SemesterColumnProps {
 function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
 	const { setNodeRef, isOver } = useDroppable({
 		id: id,
+		data: {
+			type: "semester-column",
+			accepts: ["course-card"],
+		},
 	});
 
 	const getIcon = () => {
@@ -129,6 +136,7 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
 			className={`p-4 w-[320px] h-full transition-colors ${
 				isOver ? "bg-muted/50" : ""
 			}`}
+			data-droppable="semester-column"
 		>
 			<div className="h-full flex flex-col">
 				<h3 className="font-semibold mb-4 text-center flex items-center justify-center gap-2">
@@ -137,15 +145,22 @@ function SemesterColumn({ term, year, id, courses }: SemesterColumnProps) {
 				</h3>
 				<div className="flex-1 min-h-0 overflow-hidden">
 					<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
-						<div className="space-y-4 px-4 mr-4">
-							{courses.map((course) => (
-								<CourseCard
-									key={course.id}
-									id={course.id}
-									courseCode={course.courseCode}
-									courseName={course.courseName}
-								/>
-							))}
+						<div className="space-y-4 mx-2">
+							<SortableContext
+								items={courses.map((c) => c.id)}
+								strategy={verticalListSortingStrategy}
+							>
+								{courses.map((course) => (
+									<SortableCourseCard
+										key={course.id}
+										id={course.id}
+										courseCode={course.courseCode}
+										courseName={course.courseName}
+									/>
+								))}
+							</SortableContext>
+							{/* Add invisible, minimal height placeholder to ensure dragging works at bottom of list */}
+							<div className="h-1 w-full" />
 						</div>
 					</div>
 				</div>
@@ -183,46 +198,6 @@ function AcademicYear({
 	);
 }
 
-function CourseSidebar({ courses }: { courses: Course[] }) {
-	const [search, setSearch] = useState("");
-	const { setNodeRef, isOver } = useDroppable({
-		id: "sidebar",
-	});
-
-	const filteredCourses = courses.filter(
-		(course) =>
-			course.courseCode.toLowerCase().includes(search.toLowerCase()) ||
-			course.courseName.toLowerCase().includes(search.toLowerCase()),
-	);
-
-	return (
-		<div ref={setNodeRef} className="h-full flex flex-col">
-			<div className="p-4">
-				<Input
-					placeholder="Search courses..."
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					className="w-full"
-				/>
-			</div>
-			<div
-				className={`flex-1 overflow-y-auto p-4 transition-colors ${isOver ? "bg-muted/50" : ""}`}
-			>
-				<div className="space-y-2">
-					{filteredCourses.map((course) => (
-						<CourseCard
-							key={course.id}
-							id={course.id}
-							courseCode={course.courseCode}
-							courseName={course.courseName}
-						/>
-					))}
-				</div>
-			</div>
-		</div>
-	);
-}
-
 export interface AcademicPlannerProps {
 	semesterCourses: Record<string, Course[]>;
 	courses: Course[];
@@ -230,25 +205,10 @@ export interface AcademicPlannerProps {
 	// onDragEnd: (event: DragEndEvent) => void;
 }
 
-export function AcademicPlanner({
-	semesterCourses,
-	courses,
-}: AcademicPlannerProps) {
+export function AcademicPlanner({ semesterCourses }: AcademicPlannerProps) {
 	// Generate semesters starting from Fall 2021
 	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
 	const academicYears = groupSemestersByAcademicYear(semesters);
-
-	// Get all courses that are in semesters
-	const coursesInSemesters = new Set(
-		Object.values(semesterCourses)
-			.flat()
-			.map((course) => course.id),
-	);
-
-	// Filter out courses that are already in semesters for the sidebar
-	const availableCourses = courses.filter(
-		(course) => !coursesInSemesters.has(course.id),
-	);
 
 	return (
 		<div className="h-full">
