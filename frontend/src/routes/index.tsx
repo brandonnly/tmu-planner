@@ -1,4 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	useSearch,
+	useNavigate,
+} from "@tanstack/react-router";
 import { AcademicPlanner } from "@/components/academic-planner";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +51,11 @@ import {
 
 export const Route = createFileRoute("/")({
 	component: Index,
+	validateSearch: (search: Record<string, unknown>) => {
+		return {
+			q: search.q as string | undefined,
+		};
+	},
 });
 
 function UserMenu({ user }: { user: User }) {
@@ -134,7 +144,9 @@ function CourseSidebar({
 	setSearchResults: React.Dispatch<React.SetStateAction<Course[]>>;
 	activeCourse: (Course & { isFromSidebar?: boolean }) | null;
 }) {
-	const [search, setSearch] = useState("");
+	const { q: searchParam = "" } = useSearch({ from: "/" });
+	const [inputValue, setInputValue] = useState(searchParam);
+	const navigate = useNavigate({ from: "/" });
 	const [isLoading, setIsLoading] = useState(false);
 	const { setNodeRef, isOver } = useDroppable({
 		id: "sidebar",
@@ -160,6 +172,11 @@ function CourseSidebar({
 		// Only show trash indicator if the course is being dragged from a semester (not from sidebar)
 		setShowTrashIndicator(activeCourse.isFromSidebar === false);
 	}, [isOver, activeCourse]);
+
+	// Sync input value with search param when it changes from outside (e.g. navigation)
+	useEffect(() => {
+		setInputValue(searchParam);
+	}, [searchParam]);
 
 	const performSearch = useCallback(
 		async (value: string) => {
@@ -201,31 +218,36 @@ function CourseSidebar({
 		[courses, setSearchResults],
 	);
 
+	// Effect to perform search when search param changes
+	useEffect(() => {
+		performSearch(searchParam);
+	}, [searchParam, performSearch]);
+
 	const handleSearchChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			const value = e.target.value;
-			setSearch(value);
+			setInputValue(value);
 
 			// Clear any existing timeout
 			if (searchTimeoutRef.current) {
 				clearTimeout(searchTimeoutRef.current);
 			}
 
-			// Clear results immediately if empty
-			if (!value.trim()) {
-				setSearchResults(courses);
-				return;
-			}
-
-			// Set new timeout
+			// Set new timeout to update search params
 			searchTimeoutRef.current = setTimeout(() => {
-				performSearch(value);
+				navigate({
+					search: (prev) => ({
+						...prev,
+						q: value || undefined,
+					}),
+					replace: true,
+				});
 			}, 300);
 		},
-		[courses, performSearch, setSearchResults],
+		[navigate],
 	);
 
-	// Cleanup timeout on unmount
+	// Cleanup timeouts on unmount
 	useEffect(() => {
 		return () => {
 			if (searchTimeoutRef.current) {
@@ -239,8 +261,8 @@ function CourseSidebar({
 	}));
 
 	const displayedCourses = useMemo(() => {
-		return search.trim() ? searchResults : courses;
-	}, [search, searchResults, courses]);
+		return searchParam.trim() ? searchResults : courses;
+	}, [searchParam, searchResults, courses]);
 
 	return (
 		<div ref={setNodeRef} className="h-full flex flex-col">
@@ -248,19 +270,24 @@ function CourseSidebar({
 				<div className="relative">
 					<Input
 						placeholder="Search for course..."
-						value={search}
+						value={inputValue}
 						onChange={handleSearchChange}
 						className="w-full pr-8"
 						autoFocus
 					/>
-					{search && (
+					{inputValue && (
 						<Button
 							variant="ghost"
 							size="icon"
 							className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 hover:bg-accent hover:text-accent-foreground"
 							onClick={() => {
-								setSearch("");
-								setSearchResults(courses);
+								setInputValue("");
+								navigate({
+									search: (prev) => ({
+										...prev,
+										q: undefined,
+									}),
+								});
 							}}
 						>
 							<X className="h-4 w-4" />
@@ -302,7 +329,7 @@ function CourseSidebar({
 									</div>
 								</div>
 							))
-						) : displayedCourses.length === 0 && !search.trim() ? (
+						) : displayedCourses.length === 0 && !searchParam.trim() ? (
 							<div className="space-y-6 py-8 text-center text-muted-foreground">
 								<div className="space-y-2">
 									<h3 className="text-lg font-medium text-foreground">
@@ -319,8 +346,12 @@ function CourseSidebar({
 												size="sm"
 												className="bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("PLX333");
-													performSearch("PLX333");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "PLX333",
+														}),
+													});
 												}}
 											>
 												PLX333
@@ -330,8 +361,12 @@ function CourseSidebar({
 												size="sm"
 												className="bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("GCM750");
-													performSearch("GCM750");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "GCM750",
+														}),
+													});
 												}}
 											>
 												GCM750
@@ -341,8 +376,12 @@ function CourseSidebar({
 												size="sm"
 												className="bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("CPS847");
-													performSearch("CPS847");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "CPS847",
+														}),
+													});
 												}}
 											>
 												CPS847
@@ -357,8 +396,12 @@ function CourseSidebar({
 												size="sm"
 												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("CPS Networks");
-													performSearch("CPS Networks");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "CPS Networks",
+														}),
+													});
 												}}
 											>
 												CPS Networks
@@ -368,8 +411,12 @@ function CourseSidebar({
 												size="sm"
 												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("Database Systems");
-													performSearch("Database Systems");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "Database Systems",
+														}),
+													});
 												}}
 											>
 												Database Systems
@@ -379,8 +426,12 @@ function CourseSidebar({
 												size="sm"
 												className="w-full max-w-xs bg-muted/50 hover:bg-muted"
 												onClick={() => {
-													setSearch("Calculus");
-													performSearch("Calculus");
+													navigate({
+														search: (prev) => ({
+															...prev,
+															q: "Calculus",
+														}),
+													});
 												}}
 											>
 												Calculus
