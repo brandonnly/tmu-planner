@@ -48,12 +48,14 @@ import {
 	SemesterContext,
 	SidebarContext,
 } from "@/contexts";
+import { LoginModal } from "@/components/login-modal";
 
 export const Route = createFileRoute("/")({
 	component: Index,
 	validateSearch: (search: Record<string, unknown>) => {
 		return {
 			q: search.q as string | undefined,
+			login: search.login as boolean | undefined,
 		};
 	},
 });
@@ -105,6 +107,7 @@ function UserMenu({ user }: { user: User }) {
 
 function LoginButton() {
 	const [user, setUser] = useState<User | null>(null);
+	const navigate = useNavigate();
 
 	useEffect(() => {
 		// Get initial session
@@ -127,9 +130,19 @@ function LoginButton() {
 	}
 
 	return (
-		<Link to="/login">
-			<Button variant="outline">Login</Button>
-		</Link>
+		<Button
+			variant="outline"
+			onClick={() => {
+				// Use window.location to avoid TanStack Router type issues
+				const url = new URL(window.location.href);
+				url.searchParams.set("login", "true");
+				window.history.pushState({}, "", url.toString());
+				// Force a re-render
+				window.dispatchEvent(new Event("popstate"));
+			}}
+		>
+			Login
+		</Button>
 	);
 }
 
@@ -472,6 +485,8 @@ function CourseSidebar({
 }
 
 function Index() {
+	const { login } = useSearch({ from: "/" });
+	const navigate = useNavigate();
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [activeCourse, setActiveCourse] = useState<
 		(Course & { isFromSidebar?: boolean }) | null
@@ -773,6 +788,15 @@ function Index() {
 		[semesterCourses],
 	);
 
+	const handleCloseLoginModal = () => {
+		// Use window.location to avoid TanStack Router type issues
+		const url = new URL(window.location.href);
+		url.searchParams.delete("login");
+		window.history.pushState({}, "", url.toString());
+		// Force a re-render
+		window.dispatchEvent(new Event("popstate"));
+	};
+
 	return (
 		<CourseContext.Provider value={{ courses, setCourses: () => {} }}>
 			<SemesterContext.Provider value={{ semesterCourses, setSemesterCourses }}>
@@ -786,7 +810,11 @@ function Index() {
 							onDragStart={handleDragStart}
 							onDragEnd={handleDragEnd}
 						>
-							<div className="h-screen flex">
+							{/* Login Modal */}
+							{login && <LoginModal onClose={handleCloseLoginModal} />}
+
+							{/* Rest of the component */}
+							<div className="flex h-screen">
 								<div
 									className={`
 										border-r bg-background
