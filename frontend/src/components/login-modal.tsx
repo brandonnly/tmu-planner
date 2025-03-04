@@ -113,11 +113,14 @@ export function LoginModal({ onClose }: LoginModalProps) {
 					</Button>
 					<p className="text-xs text-muted-foreground text-center max-w-[300px]">
 						By signing in, you agree to our{" "}
-						<a href="/privacy" className="underline hover:text-primary">
+						<a
+							href="/privacy?from=login"
+							className="underline hover:text-primary"
+						>
 							Privacy Policy
 						</a>{" "}
 						and{" "}
-						<a href="/tos" className="underline hover:text-primary">
+						<a href="/tos?from=login" className="underline hover:text-primary">
 							Terms of Service
 						</a>
 					</p>

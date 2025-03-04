@@ -1,22 +1,48 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	useSearch,
+	useNavigate,
+} from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 
 export const Route = createFileRoute("/privacy")({
 	component: PrivacyPage,
+	validateSearch: (search: Record<string, unknown>) => {
+		return {
+			from: search.from as string | undefined,
+		};
+	},
 });
 
 function PrivacyPage() {
+	const { from } = useSearch({ from: "/privacy" });
+	const navigate = useNavigate();
+
+	// Handle navigation back
+	const handleBackClick = () => {
+		if (from === "login") {
+			// Navigate back to index with login modal open
+			const url = new URL(window.location.origin);
+			url.searchParams.set("login", "true");
+			window.location.href = url.toString();
+		} else {
+			// Navigate back to index using the same approach
+			window.location.href = window.location.origin;
+		}
+	};
+
+	const backText = from === "login" ? "Back to Login" : "Back to TMU Planner";
+
 	return (
 		<div className="min-h-screen bg-background flex flex-col">
 			<nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
 				<div className="container flex h-14 items-center pl-6">
-					<Link to="/">
-						<Button variant="ghost" size="sm">
-							<ChevronLeft className="h-4 w-4" />
-							Back to TMU Planner
-						</Button>
-					</Link>
+					<Button variant="ghost" size="sm" onClick={handleBackClick}>
+						<ChevronLeft className="h-4 w-4" />
+						{backText}
+					</Button>
 				</div>
 			</nav>
 
