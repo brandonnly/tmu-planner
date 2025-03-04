@@ -347,6 +347,12 @@ export function AcademicPlanner({
 				return;
 			}
 
+			// Only respond if no modifier keys are pressed (Ctrl, Alt, Shift, Meta)
+			if (e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) {
+				return;
+			}
+
+			// Only handle left and right arrow keys
 			if (e.key === "ArrowLeft") {
 				e.preventDefault();
 				setCurrentYearIndex((prev) => {
