@@ -40,6 +40,15 @@
 	--sidebar-ring: hsl(217 71% 33%);
 }
 
+/* Hide scrollbar utility class */
+.scrollbar-hide {
+	-ms-overflow-style: none; /* IE and Edge */
+	scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+	display: none; /* Chrome, Safari and Opera */
+}
+
 .dark {
 	--background: hsl(217 71% 10%);
 	--foreground: hsl(210 40% 98%);

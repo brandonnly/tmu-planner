@@ -385,7 +385,7 @@ export function AcademicPlanner({
 
 	return (
 		<div className="h-full flex flex-col">
-			<div className="h-full overflow-x-auto" ref={containerRef}>
+			<div className="h-full overflow-x-auto scrollbar-hide" ref={containerRef}>
 				<div className="flex gap-16 p-6 min-w-min h-full">
 					{Object.entries(academicYears).map(
 						([startYear, yearSemesters], index) => (
