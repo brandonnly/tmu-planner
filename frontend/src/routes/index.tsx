@@ -49,6 +49,7 @@ import {
 	SidebarContext,
 } from "@/contexts";
 import { LoginModal } from "@/components/login-modal";
+import { PlanSelector } from "@/components/plan-selector";
 
 export const Route = createFileRoute("/")({
 	component: Index,
@@ -468,12 +469,12 @@ function CourseSidebar({
 			</div>
 			<div className="p-4 border-t">
 				<div className="flex items-center justify-center gap-4">
-					<Link to="/privacy">
+					<Link to="/privacy" search={{ from: "/" }}>
 						<Button variant="link" size="sm">
 							Privacy Policy
 						</Button>
 					</Link>
-					<Link to="/tos">
+					<Link to="/tos" search={{ from: "/" }}>
 						<Button variant="link" size="sm">
 							Terms of Service
 						</Button>
@@ -857,6 +858,7 @@ function Index() {
 											TMU Planner
 										</div>
 										<div className="flex-1" />
+										<PlanSelector />
 										<LoginButton />
 										<ThemeToggle />
 									</div>
