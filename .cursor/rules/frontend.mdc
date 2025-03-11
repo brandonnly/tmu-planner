@@ -33,7 +33,7 @@ frontend/
 
 ### State Management
 - Use LegendState for complex state management
-- Leverage IndexedDB for local storage
+- Use localstorage plugin for persisting offline
 - Implement cloud sync with Supabase
 - Keep state updates atomic and predictable
 

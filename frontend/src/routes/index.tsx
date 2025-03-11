@@ -5,6 +5,7 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { AcademicPlanner } from "@/components/academic-planner";
+import type { Term } from "@/components/academic-planner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +35,7 @@ import {
 	rectIntersection,
 } from "@dnd-kit/core";
 import type { CollisionDetection } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { Course } from "@/types/course";
 import { CourseCard, DraggableCourseCard } from "@/components/course-card";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -49,6 +50,16 @@ import {
 	SidebarContext,
 } from "@/contexts";
 import { LoginModal } from "@/components/login-modal";
+import { PlanSelector } from "@/components/plan-selector";
+import { useObservable } from "@legendapp/state/react";
+import {
+	auth$,
+	actions,
+	activePlanCourses$,
+	plans$,
+	selectedPlanId$,
+} from "@/state";
+import type { Database } from "@/types/database.types";
 
 export const Route = createFileRoute("/")({
 	component: Index,
@@ -106,38 +117,42 @@ function UserMenu({ user }: { user: User }) {
 }
 
 function LoginButton() {
-	const [user, setUser] = useState<User | null>(null);
-	const navigate = useNavigate();
+	const userObs = useObservable(auth$.user.get());
+	const isLoadingObs = useObservable(auth$.isLoading.get());
+	const [userData, setUserData] = useState<User | null>(null);
 
 	useEffect(() => {
-		// Get initial session
-		supabase.auth.getSession().then(({ data: { session } }) => {
-			setUser(session?.user ?? null);
-		});
-
-		// Listen for auth changes
-		const {
-			data: { subscription },
-		} = supabase.auth.onAuthStateChange((_event, session) => {
-			setUser(session?.user ?? null);
-		});
-
-		return () => subscription.unsubscribe();
+		// Initialize auth state
+		actions.initAuth();
 	}, []);
 
-	if (user) {
-		return <UserMenu user={user} />;
+	useEffect(() => {
+		const userId = userObs.get();
+		if (userId) {
+			// Get the user data from Supabase session
+			supabase.auth.getSession().then(({ data: { session } }) => {
+				if (session?.user) {
+					setUserData(session.user);
+				}
+			});
+		}
+	}, [userObs]);
+
+	if (isLoadingObs.get()) {
+		return <div>Loading...</div>;
+	}
+
+	if (userObs.get() && userData) {
+		return <UserMenu user={userData} />;
 	}
 
 	return (
 		<Button
 			variant="outline"
 			onClick={() => {
-				// Use window.location to avoid TanStack Router type issues
 				const url = new URL(window.location.href);
 				url.searchParams.set("login", "true");
 				window.history.pushState({}, "", url.toString());
-				// Force a re-render
 				window.dispatchEvent(new Event("popstate"));
 			}}
 		>
@@ -468,12 +483,12 @@ function CourseSidebar({
 			</div>
 			<div className="p-4 border-t">
 				<div className="flex items-center justify-center gap-4">
-					<Link to="/privacy">
+					<Link to="/privacy" search={{ from: "login" }}>
 						<Button variant="link" size="sm">
 							Privacy Policy
 						</Button>
 					</Link>
-					<Link to="/tos">
+					<Link to="/tos" search={{ from: "login" }}>
 						<Button variant="link" size="sm">
 							Terms of Service
 						</Button>
@@ -485,8 +500,20 @@ function CourseSidebar({
 }
 
 function Index() {
-	const { login } = useSearch({ from: "/" });
+	// State for loading status
+	const [isLoading, setIsLoading] = useState(true);
+	const [isLoadingSearch, setIsLoadingSearch] = useState(false);
+
+	// Navigation and search params
+	const search = useSearch({ from: "/" });
+	const { login, q: searchParam } = search;
+	const [inputValue, setInputValue] = useState(searchParam || "");
 	const navigate = useNavigate();
+
+	// LegendState loading status
+	const [legendStateLoaded, setLegendStateLoaded] = useState(false);
+
+	// Other existing state...
 	const [sidebarOpen, setSidebarOpen] = useState(true);
 	const [activeCourse, setActiveCourse] = useState<
 		(Course & { isFromSidebar?: boolean }) | null
@@ -496,6 +523,27 @@ function Index() {
 	const [semesterCourses, setSemesterCourses] = useState<
 		Record<string, Course[]>
 	>({});
+
+	// Get the selected plan
+	const selectedPlan = useObservable(plans$);
+	const selectedPlanId = useObservable(selectedPlanId$);
+	const activePlanCoursesObs = useObservable(activePlanCourses$);
+
+	// Get the current plan's date range
+	const planDateRange = useMemo(() => {
+		const planId = selectedPlanId.get();
+		if (!planId) return null;
+
+		const plan = selectedPlan.get()?.[planId];
+		if (!plan) return null;
+
+		return {
+			startTerm: plan.starting_semester_term as Term,
+			startYear: plan.starting_semester_year,
+			endTerm: plan.ending_semester_term as Term,
+			endYear: plan.ending_semester_year,
+		};
+	}, [selectedPlan, selectedPlanId]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, {
@@ -511,6 +559,7 @@ function Index() {
 	const handleDragStart = useCallback(
 		(event: DragStartEvent) => {
 			const { active } = event;
+			const coursesObj = activePlanCoursesObs.get();
 
 			// Try to find the course in any semester first
 			const isFromSidebar = (() => {
@@ -526,18 +575,23 @@ function Index() {
 					return true;
 				}
 
-				// If not in sidebar, check semesters
-				for (const courses of Object.values(semesterCourses)) {
-					const semesterCourse = courses.find((c) => c.id === active.id);
-					if (semesterCourse) {
-						setActiveCourse({ ...semesterCourse, isFromSidebar: false });
-						return false;
-					}
+				// If not in sidebar, check in plan courses
+				const planCourse = Object.values(coursesObj).find(
+					(c) => c?.id === active.id,
+				);
+				if (planCourse) {
+					setActiveCourse({
+						id: planCourse.course_id,
+						courseCode: planCourse.course_id,
+						courseName: "Course Name",
+						isFromSidebar: false,
+					});
+					return false;
 				}
 				return false;
 			})();
 		},
-		[courses, searchResults, semesterCourses],
+		[courses, searchResults, activePlanCoursesObs],
 	);
 
 	const handleDragEnd = useCallback(
@@ -549,164 +603,74 @@ function Index() {
 				return;
 			}
 
-			// Determine the semester ID by checking the data type
-			const overId = over.id;
-			const overData = over.data.current;
-
-			// Check if we're dropping onto a semester column or a course
-			const targetSemesterId = (() => {
-				// If directly dropping on a semester column, use its ID
-				if (overData?.type === "semester-column") {
-					return overId as string;
-				}
-
-				// If dropping on a course card, find its semester
-				for (const [semesterId, courses] of Object.entries(semesterCourses)) {
-					if (courses.some((c) => c.id === overId)) {
-						return semesterId;
-					}
-				}
-
-				// Default case - sidebar or invalid target
-				return null;
+			// Determine the semester info from the target
+			const [term, year] = (() => {
+				const overId = over.id as string;
+				const parts = overId.split("-");
+				return [
+					parts[0] as Database["public"]["Enums"]["term"],
+					Number.parseInt(parts[1], 10),
+				] as const;
 			})();
 
-			// If dropping to sidebar, handle that case
-			if (overId === "sidebar" && !activeCourse.isFromSidebar) {
-				// Find source semester
-				const sourceSemesterId = (() => {
-					for (const [semester, courses] of Object.entries(semesterCourses)) {
-						if (courses.some((c) => c.id === active.id)) {
-							return semester;
-						}
-					}
-					return null;
-				})();
-
-				if (sourceSemesterId) {
-					setSemesterCourses((prev) => ({
-						...prev,
-						[sourceSemesterId]: prev[sourceSemesterId].filter(
-							(c) => c.id !== active.id,
-						),
-					}));
-				}
+			// Handle dropping to sidebar (delete)
+			if (over.id === "sidebar" && !activeCourse.isFromSidebar) {
+				actions.removeCourseFromPlan(activeCourse.id);
 				setActiveCourse(null);
 				return;
 			}
 
-			// If we didn't find a valid target semester, do nothing
-			if (!targetSemesterId) {
-				setActiveCourse(null);
-				return;
-			}
-
-			setSemesterCourses((prev) => {
-				const newSemesterCourses = { ...prev };
-
-				// Find source semester
-				const sourceSemesterId = (() => {
-					if (activeCourse.isFromSidebar) return null;
-
-					for (const [semesterId, courses] of Object.entries(prev)) {
-						if (courses.some((c) => c.id === active.id)) {
-							return semesterId;
-						}
-					}
-					return null;
-				})();
-
-				// If dragging between semesters, remove from source
-				if (sourceSemesterId && !activeCourse.isFromSidebar) {
-					newSemesterCourses[sourceSemesterId] = prev[sourceSemesterId].filter(
-						(c) => c.id !== active.id,
-					);
-				}
-
-				// Initialize target semester if it doesn't exist
-				if (!(targetSemesterId in newSemesterCourses)) {
-					newSemesterCourses[targetSemesterId] = [];
-				}
-
-				// If source and target are the same, handle reordering
-				if (
-					sourceSemesterId === targetSemesterId &&
-					!activeCourse.isFromSidebar
-				) {
-					const oldIndex = prev[targetSemesterId].findIndex(
-						(c) => c.id === active.id,
-					);
-
-					// If dropping on a course, find its position
-					const newIndex = (() => {
-						const overIndex = prev[targetSemesterId].findIndex(
-							(c) => c.id === overId,
-						);
-
-						// If dropping directly on a course
-						if (overIndex !== -1) {
-							// Insert after the course we dropped on
-							return overIndex < oldIndex ? overIndex : overIndex;
-						}
-
-						// If dropping on the semester itself, add to the end
-						return prev[targetSemesterId].length - 1;
-					})();
-
-					if (oldIndex !== -1 && newIndex !== -1) {
-						newSemesterCourses[targetSemesterId] = arrayMove(
-							prev[targetSemesterId],
-							oldIndex,
-							Math.min(newIndex, prev[targetSemesterId].length - 1),
-						);
-						return newSemesterCourses;
-					}
-				}
-
-				// Create a new course object with a unique ID if coming from sidebar
-				const courseToAdd = activeCourse.isFromSidebar
-					? {
-							...activeCourse,
-							id: `${activeCourse.courseCode}-${Date.now()}`,
-						}
-					: activeCourse;
-
-				// Handle dropping onto a different semester
-				// If dropping onto a course, find its position
-				const overIndex = newSemesterCourses[targetSemesterId].findIndex(
-					(c) => c.id === overId,
-				);
-
-				if (overIndex !== -1) {
-					// If dropping onto a course, insert after it
-					newSemesterCourses[targetSemesterId].splice(
-						overIndex + 1,
-						0,
-						courseToAdd,
-					);
-				} else {
-					// If dropping directly on the semester, add to the end
-					newSemesterCourses[targetSemesterId].push(courseToAdd);
-				}
-
-				return newSemesterCourses;
-			});
+			// Handle course movement
+			actions.handleCourseDrop(
+				activeCourse.id,
+				term,
+				year,
+				activeCourse.isFromSidebar,
+			);
 
 			setActiveCourse(null);
 		},
-		[activeCourse, semesterCourses],
+		[activeCourse],
 	);
 
-	// Get all courses that are in semesters
-	const coursesInSemesters = useMemo(
-		() =>
-			new Set(
-				Object.values(semesterCourses)
-					.flat()
-					.map((course) => course.id),
-			),
-		[semesterCourses],
-	);
+	// Fix the course data handling with proper observable access and null checks
+	type PlanCourse = Database["public"]["Tables"]["plan_course"]["Row"];
+
+	const coursesInSemesters = useMemo(() => {
+		const coursesObj = activePlanCoursesObs.get() ?? {};
+
+		// Create a lookup for course names based on the available courses
+		const courseLookup = courses.reduce(
+			(acc, course) => {
+				acc[course.id] = course.courseName;
+				return acc;
+			},
+			{} as Record<string, string>,
+		);
+
+		return Object.entries(coursesObj).reduce(
+			(acc, [_, course]) => {
+				if (!course) return acc; // Skip null/undefined courses
+
+				// Get primitive values from the course object
+				const semesterKey = `${course.semester_term.toLowerCase().replace("/", "-")}-${course.semester_year}`;
+				if (!acc[semesterKey]) {
+					acc[semesterKey] = [];
+				}
+
+				// Try to get the course name from the lookup, or use a placeholder
+				const courseName = courseLookup[course.course_id] || "Loading...";
+
+				acc[semesterKey].push({
+					id: course.id,
+					courseCode: course.course_id,
+					courseName: courseName,
+				});
+				return acc;
+			},
+			{} as Record<string, Course[]>,
+		);
+	}, [activePlanCoursesObs, courses]);
 
 	// Custom collision detection that prioritizes semester columns
 	const customCollisionDetection: CollisionDetection = useCallback((args) => {
@@ -733,59 +697,44 @@ function Index() {
 	// Handle deleting a course from a semester
 	const handleDeleteCourse = useCallback(
 		(semesterId: string, courseId: string) => {
-			setSemesterCourses((prev) => {
-				const newSemesterCourses = { ...prev };
+			// Get the course details before removing
+			const coursesObj = activePlanCoursesObs.get();
+			const courseToDelete = Object.values(coursesObj).find(
+				(course) => course?.id === courseId,
+			);
 
-				// Check if the semester exists
-				if (newSemesterCourses[semesterId]) {
-					// Find the course before removing it
-					const courseToDelete = newSemesterCourses[semesterId].find(
-						(course) => course.id === courseId,
-					);
+			if (courseToDelete) {
+				// Remove the course using our actions
+				actions.removeCourseFromPlan(courseToDelete.course_id);
 
-					// Remove the course from the semester
-					newSemesterCourses[semesterId] = newSemesterCourses[
-						semesterId
-					].filter((course) => course.id !== courseId);
-
-					// Show toast notification if we found the course
-					if (courseToDelete) {
-						toast.success("Course Removed", {
-							description: `${courseToDelete.courseCode}: ${courseToDelete.courseName} has been removed from your plan.`,
-							duration: 3000,
-						});
-					}
-				}
-
-				return newSemesterCourses;
-			});
+				// Show toast notification
+				toast.success("Course Removed", {
+					description: `${courseToDelete.course_id} has been removed from your plan.`,
+					duration: 3000,
+				});
+			}
 		},
-		[],
+		[activePlanCoursesObs],
 	);
 
 	// Handle clicking on a course card
 	const handleCourseClick = useCallback(
 		(semesterId: string, courseId: string) => {
-			// Find the course in the semester
-			const course = semesterCourses[semesterId]?.find(
-				(course) => course.id === courseId,
+			// Find the course in our observable state
+			const coursesObj = activePlanCoursesObs.get();
+			const course = Object.values(coursesObj).find(
+				(course) => course?.id === courseId,
 			);
 
 			if (course) {
 				// Show information about the course
-				toast.info(`${course.courseCode}: ${course.courseName}`, {
+				toast.info(`${course.course_id}`, {
 					description: "Course details would be shown here.",
 					duration: 3000,
 				});
-
-				// You can implement more functionality here, such as:
-				// - Opening a modal with course details
-				// - Navigating to a course details page
-				// - Showing prerequisite information
-				// - etc.
 			}
 		},
-		[semesterCourses],
+		[activePlanCoursesObs],
 	);
 
 	const handleCloseLoginModal = () => {
@@ -797,9 +746,28 @@ function Index() {
 		window.dispatchEvent(new Event("popstate"));
 	};
 
+	// Initialize and wait for LegendState data to load before rendering
+	useEffect(() => {
+		// Initialize auth
+		actions.initAuth();
+
+		// Set a small timeout to ensure observable data is loaded
+		const loadTimer = setTimeout(() => {
+			setLegendStateLoaded(true);
+			setIsLoading(false);
+		}, 300);
+
+		return () => clearTimeout(loadTimer);
+	}, []);
+
 	return (
 		<CourseContext.Provider value={{ courses, setCourses: () => {} }}>
-			<SemesterContext.Provider value={{ semesterCourses, setSemesterCourses }}>
+			<SemesterContext.Provider
+				value={{
+					semesterCourses: coursesInSemesters,
+					setSemesterCourses: () => {},
+				}}
+			>
 				<SidebarContext.Provider
 					value={{ isOpen: sidebarOpen, setIsOpen: setSidebarOpen }}
 				>
@@ -856,6 +824,7 @@ function Index() {
 											/>
 											TMU Planner
 										</div>
+										<PlanSelector />
 										<div className="flex-1" />
 										<LoginButton />
 										<ThemeToggle />
@@ -863,8 +832,9 @@ function Index() {
 									<div className="flex-1 min-h-0">
 										<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
 											<AcademicPlanner
-												semesterCourses={semesterCourses}
+												semesterCourses={coursesInSemesters}
 												courses={courses}
+												selectedPlan={planDateRange}
 												onDeleteCourse={handleDeleteCourse}
 												onCourseClick={handleCourseClick}
 											/>

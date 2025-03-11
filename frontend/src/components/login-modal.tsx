@@ -5,8 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { GoogleIcon } from "@/components/icons/google";
 import { toast } from "sonner";
 import posthog from "posthog-js";
-import { useNavigate } from "@tanstack/react-router";
 import { useTheme } from "@/components/theme-provider";
+import { actions } from "@/state";
 
 interface LoginModalProps {
 	onClose: () => void;
@@ -63,6 +63,8 @@ export function LoginModal({ onClose }: LoginModalProps) {
 			toast.error("Failed to sign in with Google");
 		} else if (data.url) {
 			posthog.capture("login_success", {});
+			// Initialize auth state after successful login
+			actions.initAuth();
 			toast.success("Redirecting to Google...");
 		}
 	};

@@ -1,8 +1,15 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { SortableCourseCard } from "@/components/course-card";
-import { Leaf, Snowflake, Sun } from "lucide-react";
-import { useContext, useRef, useEffect, useState, useCallback } from "react";
+import { Leaf, Snowflake, Sun, ArrowUpRight } from "lucide-react";
+import {
+	useContext,
+	useRef,
+	useEffect,
+	useState,
+	useCallback,
+	useMemo,
+} from "react";
 import { SpringSummerContext } from "@/contexts";
 
 import {
@@ -10,7 +17,7 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-type Term = "Fall" | "Winter" | "Spring/Summer";
+export type Term = "Fall" | "Winter" | "Spring/Summer";
 
 interface Semester {
 	term: Term;
@@ -127,6 +134,8 @@ function SemesterColumn({
 		data: {
 			type: "semester-column",
 			accepts: ["course-card"],
+			term,
+			year,
 		},
 	});
 
@@ -155,6 +164,13 @@ function SemesterColumn({
 		}
 	};
 
+	// Sort courses by course code
+	const sortedCourses = useMemo(() => {
+		return [...courses].sort((a, b) =>
+			a.courseCode.localeCompare(b.courseCode),
+		);
+	}, [courses]);
+
 	return (
 		<Card
 			ref={setNodeRef}
@@ -173,10 +189,10 @@ function SemesterColumn({
 					<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
 						<div className="space-y-4 mx-2">
 							<SortableContext
-								items={courses.map((c) => c.id)}
+								items={sortedCourses.map((c) => c.id)}
 								strategy={verticalListSortingStrategy}
 							>
-								{courses.map((course) => (
+								{sortedCourses.map((course) => (
 									<SortableCourseCard
 										key={course.id}
 										id={course.id}
@@ -242,21 +258,44 @@ function AcademicYear({
 export interface AcademicPlannerProps {
 	semesterCourses: Record<string, Course[]>;
 	courses: Course[];
-	// onDragStart: (event: DragStartEvent) => void;
-	// onDragEnd: (event: DragEndEvent) => void;
+	selectedPlan?: {
+		startTerm: Term;
+		startYear: number;
+		endTerm: Term;
+		endYear: number;
+	} | null;
 	onDeleteCourse?: (semesterId: string, courseId: string) => void;
 	onCourseClick?: (semesterId: string, courseId: string) => void;
 }
 
 export function AcademicPlanner({
-	semesterCourses,
+	semesterCourses = {},
+	selectedPlan,
 	onDeleteCourse,
 	onCourseClick,
 }: AcademicPlannerProps) {
-	// Generate semesters starting from Fall 2021
-	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
-	const academicYears = groupSemestersByAcademicYear(semesters);
-	const academicYearKeys = Object.keys(academicYears).map(Number);
+	// Generate semesters for the current plan
+	const semesters = useMemo(() => {
+		if (!selectedPlan) {
+			return [];
+		}
+
+		return generateSemesters(
+			selectedPlan.startTerm,
+			selectedPlan.startYear,
+			selectedPlan.endTerm,
+			selectedPlan.endYear,
+		);
+	}, [selectedPlan]);
+
+	const academicYears = useMemo(
+		() => groupSemestersByAcademicYear(semesters),
+		[semesters],
+	);
+	const academicYearKeys = useMemo(
+		() => Object.keys(academicYears).map(Number),
+		[academicYears],
+	);
 	const [currentYearIndex, setCurrentYearIndex] = useState(0);
 	const containerRef = useRef<HTMLDivElement>(null);
 
@@ -382,6 +421,23 @@ export function AcademicPlanner({
 		},
 		[academicYearKeys, scrollToYear],
 	);
+
+	if (!selectedPlan) {
+		return (
+			<div className="h-full flex items-center justify-center">
+				<Card className="p-8 max-w-md text-center">
+					<div className="flex justify-center mb-4">
+						<ArrowUpRight className="h-12 w-12 text-muted-foreground" />
+					</div>
+					<h2 className="text-lg font-semibold mb-2">No Plan Selected</h2>
+					<p className="text-muted-foreground">
+						Select an existing plan or create a new one to start planning your
+						courses.
+					</p>
+				</Card>
+			</div>
+		);
+	}
 
 	return (
 		<div className="h-full flex flex-col">
