@@ -48,6 +48,8 @@ ALTER TABLE "public"."user_plan" ENABLE ROW LEVEL SECURITY;
 
 CREATE TABLE "public"."plan_course"(
     "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+    "created_at" timestamp with time zone NOT NULL,
+    "updated_at" timestamp with time zone NOT NULL,
     "plan_id" uuid NOT NULL,
     "course_id" uuid NOT NULL,
     "semester_term" text NOT NULL,
@@ -80,13 +82,23 @@ $$
 LANGUAGE 'plpgsql';
 
 -- Create triggers
-CREATE TRIGGER set_created_at
+CREATE TRIGGER set_created_at_user_plan
     BEFORE INSERT ON public.user_plan
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_created_at();
 
-CREATE TRIGGER set_updated_at
+CREATE TRIGGER set_updated_at_user_plan
     BEFORE UPDATE ON public.user_plan
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_updated_at();
+
+CREATE TRIGGER set_created_at_plan_course
+    BEFORE INSERT ON public.plan_course
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_created_at();
+
+CREATE TRIGGER set_updated_at_plan_course
+    BEFORE UPDATE ON public.plan_course
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_updated_at();
 
