@@ -5,6 +5,6 @@
         "frontend"
     ],
     "devDependencies": {
-        "supabase": "^2.12.1"
+        "supabase": "^2.19.7"
     }
 }
