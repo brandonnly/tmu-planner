@@ -4,13 +4,17 @@ import { SortableCourseCard } from "@/components/course-card";
 import { Leaf, Snowflake, Sun } from "lucide-react";
 import { useContext, useRef, useEffect, useState, useCallback } from "react";
 import { SpringSummerContext } from "@/contexts";
+import { use$ } from "@legendapp/state/react";
+import { plans$, selectedPlanId$, planCourses$ } from "@/state";
+import { Memo } from "@legendapp/state/react";
+import type { Database } from "@/types/database.types";
 
 import {
 	SortableContext,
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-type Term = "Fall" | "Winter" | "Spring/Summer";
+type Term = Database["public"]["Enums"]["term"];
 
 interface Semester {
 	term: Term;
@@ -18,12 +22,11 @@ interface Semester {
 	id: string;
 }
 
-// Example course data - you can replace this with your actual data structure
-interface Course {
+type Course = {
 	id: string;
 	courseCode: string;
 	courseName: string;
-}
+};
 
 function generateSemesters(
 	startTerm: Term,
@@ -173,19 +176,24 @@ function SemesterColumn({
 					<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
 						<div className="space-y-4 mx-2">
 							<SortableContext
-								items={courses.map((c) => c.id)}
+								id={id}
+								items={courses}
 								strategy={verticalListSortingStrategy}
 							>
-								{courses.map((course) => (
-									<SortableCourseCard
-										key={course.id}
-										id={course.id}
-										courseCode={course.courseCode}
-										courseName={course.courseName}
-										onDelete={handleDeleteCourse}
-										onClick={() => handleCourseClick(course.id)}
-									/>
-								))}
+								<Memo>
+									{() =>
+										courses.map((course) => (
+											<SortableCourseCard
+												key={course.id}
+												id={course.id}
+												courseCode={course.courseCode}
+												courseName={course.courseName}
+												onDelete={handleDeleteCourse}
+												onClick={() => handleCourseClick(course.id)}
+											/>
+										))
+									}
+								</Memo>
 							</SortableContext>
 							{/* Add invisible, minimal height placeholder to ensure dragging works at bottom of list */}
 							<div className="h-1 w-full" />
@@ -213,95 +221,56 @@ function AcademicYear({
 	onCourseClick,
 }: AcademicYearProps) {
 	const { hideSpring } = useContext(SpringSummerContext);
-	const visibleSemesters = hideSpring
-		? semesters.filter((semester) => semester.term !== "Spring/Summer")
-		: semesters;
 
 	return (
 		<div className="h-full flex flex-col">
 			<h2 className="text-lg font-bold mb-2 transition-colors [div[aria-current=true]_&]:text-primary">{`${startYear}-${startYear + 1}`}</h2>
 			<div className="flex gap-2 flex-1 min-h-0">
-				{visibleSemesters.map((semester, index) => (
-					<SemesterColumn
-						key={semester.id}
-						term={semester.term}
-						year={semester.year}
-						id={semester.id}
-						courses={semesterCourses[semester.id] || []}
-						data-first-semester={index === 0 ? "true" : "false"}
-						data-academic-year={startYear}
-						onDeleteCourse={onDeleteCourse}
-						onCourseClick={onCourseClick}
-					/>
-				))}
+				<Memo>
+					{() => {
+						const visibleSemesters = hideSpring
+							? semesters.filter(
+									(semester) => semester.term !== "Spring/Summer",
+								)
+							: semesters;
+
+						return visibleSemesters.map((semester, index) => (
+							<SemesterColumn
+								key={semester.id}
+								term={semester.term}
+								year={semester.year}
+								id={semester.id}
+								courses={semesterCourses[semester.id] || []}
+								data-first-semester={index === 0 ? "true" : "false"}
+								data-academic-year={startYear}
+								onDeleteCourse={onDeleteCourse}
+								onCourseClick={onCourseClick}
+							/>
+						));
+					}}
+				</Memo>
 			</div>
 		</div>
 	);
 }
 
 export interface AcademicPlannerProps {
-	semesterCourses: Record<string, Course[]>;
-	courses: Course[];
-	// onDragStart: (event: DragStartEvent) => void;
-	// onDragEnd: (event: DragEndEvent) => void;
 	onDeleteCourse?: (semesterId: string, courseId: string) => void;
 	onCourseClick?: (semesterId: string, courseId: string) => void;
 }
 
 export function AcademicPlanner({
-	semesterCourses,
 	onDeleteCourse,
 	onCourseClick,
 }: AcademicPlannerProps) {
-	// Generate semesters starting from Fall 2021
-	const semesters = generateSemesters("Fall", 2021, "Fall", 2026);
-	const academicYears = groupSemestersByAcademicYear(semesters);
-	const academicYearKeys = Object.keys(academicYears).map(Number);
+	const plans = use$(plans$);
+	const selectedPlanId = use$(selectedPlanId$);
+	const planCourses = use$(planCourses$);
 	const [currentYearIndex, setCurrentYearIndex] = useState(0);
 	const containerRef = useRef<HTMLDivElement>(null);
-
-	// Update current year index based on scroll position
-	useEffect(() => {
-		const updateCurrentYearOnScroll = () => {
-			if (!containerRef.current) return;
-
-			const containerRect = containerRef.current.getBoundingClientRect();
-			const containerLeft = containerRect.left;
-			const containerWidth = containerRect.width;
-			const centerX = containerLeft + containerWidth / 2;
-
-			// Find which academic year is most visible in the viewport
-			let closestYear = academicYearKeys[0];
-			let closestDistance = Number.POSITIVE_INFINITY;
-
-			academicYearKeys.forEach((year, index) => {
-				const yearElement = document.getElementById(`academic-year-${year}`);
-				if (yearElement) {
-					const yearRect = yearElement.getBoundingClientRect();
-					const yearCenterX = yearRect.left + yearRect.width / 2;
-					const distance = Math.abs(centerX - yearCenterX);
-
-					if (distance < closestDistance) {
-						closestDistance = distance;
-						closestYear = year;
-					}
-				}
-			});
-
-			// Update current year index
-			const newIndex = academicYearKeys.indexOf(closestYear);
-			if (newIndex !== -1 && newIndex !== currentYearIndex) {
-				setCurrentYearIndex(newIndex);
-			}
-		};
-
-		const container = containerRef.current;
-		if (container) {
-			container.addEventListener("scroll", updateCurrentYearOnScroll);
-			return () =>
-				container.removeEventListener("scroll", updateCurrentYearOnScroll);
-		}
-	}, [academicYearKeys, currentYearIndex]);
+	const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+		undefined,
+	);
 
 	// Function to scroll to a specific academic year
 	const scrollToYear = useCallback((year: number) => {
@@ -312,144 +281,291 @@ export function AcademicPlanner({
 			);
 
 			if (firstSemesterColumn) {
-				// Get the container's padding-left
-				const containerStyle = window.getComputedStyle(containerRef.current);
-				const containerPaddingLeft =
-					Number.parseInt(containerStyle.paddingLeft, 10) || 0;
-
-				// Calculate the element's position relative to the container's content area
 				const columnRect = (
 					firstSemesterColumn as HTMLElement
 				).getBoundingClientRect();
 				const containerRect = containerRef.current.getBoundingClientRect();
-				const relativeLeft =
-					columnRect.left - containerRect.left - containerPaddingLeft;
 
-				// Add a left offset to account for additional spacing (adjust this value as needed)
-				const leftOffset = 24; // 24px offset to the left
+				// Calculate the scroll position needed to center the year
+				const scrollLeft =
+					containerRef.current.scrollLeft +
+					columnRect.left -
+					containerRect.left -
+					(containerRect.width - columnRect.width) / 2;
 
-				// Scroll to the calculated position with the offset
+				// Scroll to the calculated position
 				containerRef.current.scrollTo({
-					left: containerRef.current.scrollLeft + relativeLeft - leftOffset,
+					left: scrollLeft,
 					behavior: "smooth",
 				});
 			}
 		}
 	}, []);
 
-	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
+	// Function to handle clicking on a year indicator
+	const handleYearIndicatorClick = useCallback(
+		(yearIndex: number, academicYearKeys: number[]) => {
+			setCurrentYearIndex(yearIndex);
+			scrollToYear(academicYearKeys[yearIndex]);
+		},
+		[scrollToYear],
+	);
+
+	// Function to handle scroll events
+	const handleScroll = useCallback((academicYearKeys: number[]) => {
+		if (!containerRef.current) return;
+
+		// Clear any existing timeout
+		if (scrollTimeoutRef.current) {
+			clearTimeout(scrollTimeoutRef.current);
+		}
+
+		// Debounce the scroll handler
+		scrollTimeoutRef.current = setTimeout(() => {
+			const container = containerRef.current;
+			if (!container) return;
+
+			const containerRect = container.getBoundingClientRect();
+			const containerCenter = containerRect.left + containerRect.width / 2;
+			const scrollLeft = container.scrollLeft;
+
+			// Find the academic year div whose center is closest to the container's center
+			let closestDistance = Number.POSITIVE_INFINITY;
+			let closestIndex = 0;
+
+			academicYearKeys.forEach((year, index) => {
+				const yearDiv = container.querySelector(
+					`[data-first-semester="true"][data-academic-year="${year}"]`,
+				);
+				if (!yearDiv) return;
+
+				const yearRect = (yearDiv as HTMLElement).getBoundingClientRect();
+				const yearCenter = yearRect.left + yearRect.width / 2;
+				const adjustedYearCenter = yearCenter + scrollLeft;
+				const distance = Math.abs(
+					containerCenter + scrollLeft - adjustedYearCenter,
+				);
+
+				if (distance < closestDistance) {
+					closestDistance = distance;
+					closestIndex = index;
+				}
+			});
+
+			setCurrentYearIndex(closestIndex);
+		}, 100);
+	}, []);
+
+	// Function to handle keyboard navigation
+	const handleKeyDown = useCallback(
+		(e: KeyboardEvent, academicYearKeys: number[]) => {
 			// Only handle if not in an input field
 			if (
-				e.target instanceof HTMLInputElement ||
-				e.target instanceof HTMLTextAreaElement
+				document.activeElement?.tagName === "INPUT" ||
+				document.activeElement?.tagName === "TEXTAREA"
 			) {
 				return;
 			}
 
-			// Only respond if no modifier keys are pressed (Ctrl, Alt, Shift, Meta)
-			if (e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) {
-				return;
-			}
-
-			// Only handle left and right arrow keys
-			if (e.key === "ArrowLeft") {
+			if (e.key === "ArrowLeft" && currentYearIndex > 0) {
 				e.preventDefault();
-				setCurrentYearIndex((prev) => {
-					const newIndex = Math.max(0, prev - 1);
-					scrollToYear(academicYearKeys[newIndex]);
-					return newIndex;
-				});
-			} else if (e.key === "ArrowRight") {
+				handleYearIndicatorClick(currentYearIndex - 1, academicYearKeys);
+			} else if (
+				e.key === "ArrowRight" &&
+				currentYearIndex < academicYearKeys.length - 1
+			) {
 				e.preventDefault();
-				setCurrentYearIndex((prev) => {
-					const newIndex = Math.min(academicYearKeys.length - 1, prev + 1);
-					scrollToYear(academicYearKeys[newIndex]);
-					return newIndex;
-				});
+				handleYearIndicatorClick(currentYearIndex + 1, academicYearKeys);
 			}
-		};
-
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [academicYearKeys, scrollToYear]);
-
-	// Function to handle clicking on a year indicator
-	const handleYearIndicatorClick = useCallback(
-		(yearIndex: number) => {
-			setCurrentYearIndex(yearIndex);
-			scrollToYear(academicYearKeys[yearIndex]);
 		},
-		[academicYearKeys, scrollToYear],
+		[currentYearIndex, handleYearIndicatorClick],
+	);
+
+	// Memoize the event handlers
+	const createHandleScrollThrottled = useCallback(
+		(academicYearKeys: number[]) => {
+			return () => handleScroll(academicYearKeys);
+		},
+		[handleScroll],
+	);
+
+	const createHandleKeyDownWrapper = useCallback(
+		(academicYearKeys: number[]) => {
+			return (e: KeyboardEvent) => handleKeyDown(e, academicYearKeys);
+		},
+		[handleKeyDown],
 	);
 
 	return (
 		<div className="h-full flex flex-col">
-			<div className="h-full overflow-x-auto scrollbar-hide" ref={containerRef}>
-				<div className="flex gap-16 p-6 min-w-min h-full">
-					{Object.entries(academicYears).map(
-						([startYear, yearSemesters], index) => (
-							<div
-								key={startYear}
-								className="h-full"
-								id={`academic-year-${startYear}`}
-								aria-current={index === currentYearIndex ? "true" : "false"}
-							>
-								<AcademicYear
-									startYear={Number.parseInt(startYear)}
-									semesters={yearSemesters}
-									semesterCourses={semesterCourses}
-									onDeleteCourse={onDeleteCourse}
-									onCourseClick={onCourseClick}
-								/>
+			<Memo>
+				{() => {
+					// Get the plan data reactively
+					const planId = selectedPlanId;
+					if (!planId || typeof planId !== "string") {
+						return (
+							<div className="h-full flex flex-col items-center justify-center p-8">
+								<div className="text-center max-w-md">
+									<h2 className="text-2xl font-bold mb-4">No Plan Selected</h2>
+									<p className="text-muted-foreground mb-6">
+										Please select an existing plan or create a new one using the
+										plan selector at the top of the page.
+									</p>
+								</div>
 							</div>
-						),
-					)}
-				</div>
-			</div>
+						);
+					}
 
-			{/* Year indicator bar */}
-			<div className="flex flex-col items-center py-2 border-t">
-				{/* Current year indicator */}
-				<div className="mb-2 text-sm font-medium">
-					{academicYearKeys.length > 0 &&
-					currentYearIndex >= 0 &&
-					currentYearIndex < academicYearKeys.length
-						? `${academicYearKeys[currentYearIndex]}-${academicYearKeys[currentYearIndex] + 1}`
-						: ""}
-				</div>
+					const plan = plans[planId];
+					if (!plan) return null;
 
-				<div className="flex gap-1 items-center">
-					{/* First year label */}
-					<span className="text-xs text-muted-foreground mr-2">
-						{academicYearKeys.length > 0
-							? `${academicYearKeys[0]}-${academicYearKeys[0] + 1}`
-							: ""}
-					</span>
+					// Generate semesters based on the selected plan
+					const semesters = generateSemesters(
+						plan.starting_semester_term as Term,
+						plan.starting_semester_year,
+						plan.ending_semester_term as Term,
+						plan.ending_semester_year,
+					);
 
-					{academicYearKeys.map((year, index) => (
-						<button
-							type="button"
-							key={year}
-							onClick={() => handleYearIndicatorClick(index)}
-							className={`h-2 rounded-full transition-all ${
-								index === currentYearIndex
-									? "w-8 bg-primary"
-									: "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
-							}`}
-							title={`${year}-${year + 1}`}
-							aria-label={`Go to academic year ${year}-${year + 1}`}
-						/>
-					))}
+					// Convert planCourses to semesterCourses format
+					const coursesMap: Record<string, Course[]> = {};
+					for (const [id, planCourse] of Object.entries(planCourses)) {
+						if (planCourse.plan_id !== planId) continue;
 
-					{/* Last year label */}
-					<span className="text-xs text-muted-foreground ml-2">
-						{academicYearKeys.length > 0
-							? `${academicYearKeys[academicYearKeys.length - 1]}-${academicYearKeys[academicYearKeys.length - 1] + 1}`
-							: ""}
-					</span>
-				</div>
-			</div>
+						// Format the semester ID
+						const term = String(planCourse.semester_term)
+							.toLowerCase()
+							.replace("/", "-");
+						const semesterId = `${term}-${planCourse.semester_year}`;
+
+						if (!coursesMap[semesterId]) {
+							coursesMap[semesterId] = [];
+						}
+
+						coursesMap[semesterId].push({
+							id: id,
+							courseCode: planCourse.course_id,
+							courseName: planCourse.note || "Course Name",
+						});
+					}
+
+					const academicYears = groupSemestersByAcademicYear(semesters);
+					const academicYearKeys = Object.keys(academicYears).map(Number);
+
+					// Reset current year index if it's out of bounds
+					if (
+						currentYearIndex >= academicYearKeys.length &&
+						academicYearKeys.length > 0 &&
+						currentYearIndex !== 0
+					) {
+						setCurrentYearIndex(0);
+					}
+
+					const handleScrollThrottled =
+						createHandleScrollThrottled(academicYearKeys);
+					const handleKeyDownWrapper =
+						createHandleKeyDownWrapper(academicYearKeys);
+
+					// Set up event listeners for this specific set of academic years
+					useEffect(() => {
+						const container = containerRef.current;
+						if (!container) return;
+
+						// Add event listeners
+						container.addEventListener("scroll", handleScrollThrottled, {
+							passive: true,
+						});
+						window.addEventListener("keydown", handleKeyDownWrapper);
+
+						// Initial scroll position check
+						handleScrollThrottled();
+
+						// Cleanup
+						return () => {
+							container.removeEventListener("scroll", handleScrollThrottled);
+							window.removeEventListener("keydown", handleKeyDownWrapper);
+						};
+					}, [handleScrollThrottled, handleKeyDownWrapper]);
+
+					return (
+						<>
+							<div
+								className="h-full overflow-x-auto"
+								ref={containerRef}
+								onScroll={handleScrollThrottled}
+							>
+								<div className="flex gap-16 p-6 min-w-min h-full">
+									{Object.entries(academicYears).map(
+										([startYear, yearSemesters], index) => (
+											<div
+												key={startYear}
+												className="h-full"
+												id={`academic-year-${startYear}`}
+												aria-current={
+													index === currentYearIndex ? "true" : "false"
+												}
+											>
+												<AcademicYear
+													startYear={Number.parseInt(startYear)}
+													semesters={yearSemesters}
+													semesterCourses={coursesMap}
+													onDeleteCourse={onDeleteCourse}
+													onCourseClick={onCourseClick}
+												/>
+											</div>
+										),
+									)}
+								</div>
+							</div>
+
+							{/* Year indicator bar */}
+							<div className="flex flex-col items-center py-2 border-t">
+								{/* Current year indicator */}
+								<div className="mb-2 text-sm font-medium">
+									{academicYearKeys.length > 0 &&
+									currentYearIndex >= 0 &&
+									currentYearIndex < academicYearKeys.length
+										? `${academicYearKeys[currentYearIndex]}-${academicYearKeys[currentYearIndex] + 1}`
+										: ""}
+								</div>
+
+								<div className="flex gap-1 items-center">
+									{/* First year label */}
+									<span className="text-xs text-muted-foreground mr-2">
+										{academicYearKeys.length > 0
+											? `${academicYearKeys[0]}-${academicYearKeys[0] + 1}`
+											: ""}
+									</span>
+
+									{academicYearKeys.map((year, index) => (
+										<button
+											type="button"
+											key={year}
+											onClick={() =>
+												handleYearIndicatorClick(index, academicYearKeys)
+											}
+											className={`h-2 rounded-full transition-all ${
+												index === currentYearIndex
+													? "w-8 bg-primary"
+													: "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+											}`}
+											title={`${year}-${year + 1}`}
+											aria-label={`Go to academic year ${year}-${year + 1}`}
+										/>
+									))}
+
+									{/* Last year label */}
+									<span className="text-xs text-muted-foreground ml-2">
+										{academicYearKeys.length > 0
+											? `${academicYearKeys[academicYearKeys.length - 1]}-${academicYearKeys[academicYearKeys.length - 1] + 1}`
+											: ""}
+									</span>
+								</div>
+							</div>
+						</>
+					);
+				}}
+			</Memo>
 		</div>
 	);
 }

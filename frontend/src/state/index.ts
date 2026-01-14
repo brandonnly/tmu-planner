@@ -29,6 +29,7 @@ export const plans$ = observable(
 			name: "plans",
 			plugin: ObservablePersistLocalStorage,
 		},
+		initial: {},
 	}),
 );
 
@@ -52,6 +53,7 @@ export const planCourses$ = observable(
 			name: "plan-courses",
 			plugin: ObservablePersistLocalStorage,
 		},
+		initial: {},
 	}),
 );
 

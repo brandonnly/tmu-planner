@@ -5,6 +5,14 @@ import {
 	useNavigate,
 } from "@tanstack/react-router";
 import { AcademicPlanner } from "@/components/academic-planner";
+import {
+	addPlanCourse,
+	updatePlanCourse,
+	deletePlanCourse,
+	selectedPlanId$,
+	planCourses$,
+} from "@/state";
+import { use$ } from "@legendapp/state/react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -170,7 +178,6 @@ function CourseSidebar({
 		},
 	});
 	const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
-	const { semesterCourses } = useContext(SemesterContext);
 
 	// Track if we're dragging from a semester
 	const [showTrashIndicator, setShowTrashIndicator] = useState(false);
@@ -494,9 +501,21 @@ function Index() {
 	>(null);
 	const [courses] = useState<Course[]>([]);
 	const [searchResults, setSearchResults] = useState<Course[]>([]);
-	const [semesterCourses, setSemesterCourses] = useState<
-		Record<string, Course[]>
-	>({});
+
+	// Use planCourses$ observable with use$ hook
+	const planCourses = use$(planCourses$);
+	const selectedPlanId = use$(selectedPlanId$);
+
+	// Get all courses that are in semesters
+	const coursesInSemesters = useMemo(
+		() =>
+			new Set(
+				Object.entries(planCourses)
+					.filter(([_, course]) => course.plan_id === selectedPlanId)
+					.map(([id]) => id),
+			),
+		[planCourses, selectedPlanId],
+	);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, {
@@ -528,17 +547,23 @@ function Index() {
 				}
 
 				// If not in sidebar, check semesters
-				for (const courses of Object.values(semesterCourses)) {
-					const semesterCourse = courses.find((c) => c.id === active.id);
-					if (semesterCourse) {
-						setActiveCourse({ ...semesterCourse, isFromSidebar: false });
-						return false;
-					}
+				const planCourse = Object.entries(planCourses).find(
+					([id]) => id === active.id,
+				);
+				if (planCourse) {
+					const [id, course] = planCourse;
+					setActiveCourse({
+						id,
+						courseCode: course.course_id,
+						courseName: course.note || "Course Name",
+						isFromSidebar: false,
+					});
+					return false;
 				}
 				return false;
 			})();
 		},
-		[courses, searchResults, semesterCourses],
+		[courses, searchResults, planCourses],
 	);
 
 	const handleDragEnd = useCallback(
@@ -562,10 +587,14 @@ function Index() {
 				}
 
 				// If dropping on a course card, find its semester
-				for (const [semesterId, courses] of Object.entries(semesterCourses)) {
-					if (courses.some((c) => c.id === overId)) {
-						return semesterId;
-					}
+				const planCourse = Object.entries(planCourses).find(
+					([id, course]) => id === overId,
+				);
+				if (planCourse) {
+					const [_, course] = planCourse;
+					return `${course.semester_term.toLowerCase().replace("/", "-")}-${
+						course.semester_year
+					}`;
 				}
 
 				// Default case - sidebar or invalid target
@@ -574,24 +603,9 @@ function Index() {
 
 			// If dropping to sidebar, handle that case
 			if (overId === "sidebar" && !activeCourse.isFromSidebar) {
-				// Find source semester
-				const sourceSemesterId = (() => {
-					for (const [semester, courses] of Object.entries(semesterCourses)) {
-						if (courses.some((c) => c.id === active.id)) {
-							return semester;
-						}
-					}
-					return null;
-				})();
-
-				if (sourceSemesterId) {
-					setSemesterCourses((prev) => ({
-						...prev,
-						[sourceSemesterId]: prev[sourceSemesterId].filter(
-							(c) => c.id !== active.id,
-						),
-					}));
-				}
+				// Delete the course from the plan in the database
+				const courseId = active.id as string;
+				deletePlanCourse(courseId);
 				setActiveCourse(null);
 				return;
 			}
@@ -602,111 +616,48 @@ function Index() {
 				return;
 			}
 
-			setSemesterCourses((prev) => {
-				const newSemesterCourses = { ...prev };
+			// Parse the semester term and year from the targetSemesterId
+			// Format is "term-year", e.g., "fall-2023"
+			const [semesterTerm, semesterYear] = targetSemesterId.split("-");
 
-				// Find source semester
-				const sourceSemesterId = (() => {
-					if (activeCourse.isFromSidebar) return null;
+			// Convert term to proper format, handling Spring/Summer case
+			let term = semesterTerm.charAt(0).toUpperCase() + semesterTerm.slice(1);
+			if (term === "Spring") {
+				term = "Spring/Summer";
+			}
 
-					for (const [semesterId, courses] of Object.entries(prev)) {
-						if (courses.some((c) => c.id === active.id)) {
-							return semesterId;
-						}
-					}
-					return null;
-				})();
+			const year = Number.parseInt(semesterYear, 10);
+			const planId = selectedPlanId;
 
-				// If dragging between semesters, remove from source
-				if (sourceSemesterId && !activeCourse.isFromSidebar) {
-					newSemesterCourses[sourceSemesterId] = prev[sourceSemesterId].filter(
-						(c) => c.id !== active.id,
-					);
-				}
+			if (!planId) {
+				setActiveCourse(null);
+				return;
+			}
 
-				// Initialize target semester if it doesn't exist
-				if (!(targetSemesterId in newSemesterCourses)) {
-					newSemesterCourses[targetSemesterId] = [];
-				}
-
-				// If source and target are the same, handle reordering
-				if (
-					sourceSemesterId === targetSemesterId &&
-					!activeCourse.isFromSidebar
-				) {
-					const oldIndex = prev[targetSemesterId].findIndex(
-						(c) => c.id === active.id,
-					);
-
-					// If dropping on a course, find its position
-					const newIndex = (() => {
-						const overIndex = prev[targetSemesterId].findIndex(
-							(c) => c.id === overId,
-						);
-
-						// If dropping directly on a course
-						if (overIndex !== -1) {
-							// Insert after the course we dropped on
-							return overIndex < oldIndex ? overIndex : overIndex;
-						}
-
-						// If dropping on the semester itself, add to the end
-						return prev[targetSemesterId].length - 1;
-					})();
-
-					if (oldIndex !== -1 && newIndex !== -1) {
-						newSemesterCourses[targetSemesterId] = arrayMove(
-							prev[targetSemesterId],
-							oldIndex,
-							Math.min(newIndex, prev[targetSemesterId].length - 1),
-						);
-						return newSemesterCourses;
-					}
-				}
-
-				// Create a new course object with a unique ID if coming from sidebar
-				const courseToAdd = activeCourse.isFromSidebar
-					? {
-							...activeCourse,
-							id: `${activeCourse.courseCode}-${Date.now()}`,
-						}
-					: activeCourse;
-
-				// Handle dropping onto a different semester
-				// If dropping onto a course, find its position
-				const overIndex = newSemesterCourses[targetSemesterId].findIndex(
-					(c) => c.id === overId,
-				);
-
-				if (overIndex !== -1) {
-					// If dropping onto a course, insert after it
-					newSemesterCourses[targetSemesterId].splice(
-						overIndex + 1,
-						0,
-						courseToAdd,
-					);
-				} else {
-					// If dropping directly on the semester, add to the end
-					newSemesterCourses[targetSemesterId].push(courseToAdd);
-				}
-
-				return newSemesterCourses;
-			});
+			// If the course is from the sidebar, add it to the plan
+			if (activeCourse.isFromSidebar) {
+				// Add the course to the plan in the database
+				addPlanCourse({
+					course_id: activeCourse.id,
+					plan_id: planId,
+					semester_term: term,
+					semester_year: year,
+					note: "",
+				});
+			} else {
+				// If moving between semesters, update the course in the database
+				updatePlanCourse({
+					id: active.id as string,
+					semester_term: term,
+					semester_year: year,
+					plan_id: planId,
+					course_id: activeCourse.id,
+				});
+			}
 
 			setActiveCourse(null);
 		},
-		[activeCourse, semesterCourses],
-	);
-
-	// Get all courses that are in semesters
-	const coursesInSemesters = useMemo(
-		() =>
-			new Set(
-				Object.values(semesterCourses)
-					.flat()
-					.map((course) => course.id),
-			),
-		[semesterCourses],
+		[activeCourse, planCourses, selectedPlanId],
 	);
 
 	// Custom collision detection that prioritizes semester columns
@@ -734,59 +685,43 @@ function Index() {
 	// Handle deleting a course from a semester
 	const handleDeleteCourse = useCallback(
 		(semesterId: string, courseId: string) => {
-			setSemesterCourses((prev) => {
-				const newSemesterCourses = { ...prev };
+			// Delete the course from the plan in the database
+			deletePlanCourse(courseId);
 
-				// Check if the semester exists
-				if (newSemesterCourses[semesterId]) {
-					// Find the course before removing it
-					const courseToDelete = newSemesterCourses[semesterId].find(
-						(course) => course.id === courseId,
-					);
-
-					// Remove the course from the semester
-					newSemesterCourses[semesterId] = newSemesterCourses[
-						semesterId
-					].filter((course) => course.id !== courseId);
-
-					// Show toast notification if we found the course
-					if (courseToDelete) {
-						toast.success("Course Removed", {
-							description: `${courseToDelete.courseCode}: ${courseToDelete.courseName} has been removed from your plan.`,
-							duration: 3000,
-						});
-					}
-				}
-
-				return newSemesterCourses;
-			});
+			// Show toast notification
+			const planCourse = Object.entries(planCourses).find(
+				([id]) => id === courseId,
+			);
+			if (planCourse) {
+				const [_, course] = planCourse;
+				toast.success("Course Removed", {
+					description: `${course.course_id}: ${
+						course.note || "Course Name"
+					} has been removed from your plan.`,
+					duration: 3000,
+				});
+			}
 		},
-		[],
+		[planCourses],
 	);
 
 	// Handle clicking on a course card
 	const handleCourseClick = useCallback(
 		(semesterId: string, courseId: string) => {
 			// Find the course in the semester
-			const course = semesterCourses[semesterId]?.find(
-				(course) => course.id === courseId,
+			const planCourse = Object.entries(planCourses).find(
+				([id]) => id === courseId,
 			);
-
-			if (course) {
+			if (planCourse) {
+				const [_, course] = planCourse;
 				// Show information about the course
-				toast.info(`${course.courseCode}: ${course.courseName}`, {
+				toast.info(`${course.course_id}: ${course.note || "Course Name"}`, {
 					description: "Course details would be shown here.",
 					duration: 3000,
 				});
-
-				// You can implement more functionality here, such as:
-				// - Opening a modal with course details
-				// - Navigating to a course details page
-				// - Showing prerequisite information
-				// - etc.
 			}
 		},
-		[semesterCourses],
+		[planCourses],
 	);
 
 	const handleCloseLoginModal = () => {
@@ -800,7 +735,17 @@ function Index() {
 
 	return (
 		<CourseContext.Provider value={{ courses, setCourses: () => {} }}>
-			<SemesterContext.Provider value={{ semesterCourses, setSemesterCourses }}>
+			<SemesterContext.Provider
+				value={{
+					semesterCourses: {},
+					setSemesterCourses: (() => {
+						// We don't need to set semester courses anymore since we're using planCourses$
+						console.warn(
+							"setSemesterCourses is deprecated. Use planCourses$ instead.",
+						);
+					}) as React.Dispatch<React.SetStateAction<Record<string, Course[]>>>,
+				}}
+			>
 				<SidebarContext.Provider
 					value={{ isOpen: sidebarOpen, setIsOpen: setSidebarOpen }}
 				>
@@ -865,8 +810,6 @@ function Index() {
 									<div className="flex-1 min-h-0">
 										<div className="h-full overflow-y-auto overflow-x-hidden scrollbar-gutter-stable [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/25">
 											<AcademicPlanner
-												semesterCourses={semesterCourses}
-												courses={courses}
 												onDeleteCourse={handleDeleteCourse}
 												onCourseClick={handleCourseClick}
 											/>
